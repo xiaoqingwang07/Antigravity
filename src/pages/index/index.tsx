@@ -3,6 +3,7 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { useState, useMemo } from 'react'
 import { DEFAULT_RECIPES } from '../../data/recipes'
 import { getSearchHistory, addSearchHistory, clearSearchHistory } from '../../store'
+import { fetchRecipes } from '../../api/recipe'
 import type { Recipe } from '../../types/recipe'
 
 export default function Index() {
@@ -29,25 +30,9 @@ export default function Index() {
 
   const recommendedRecipes = useMemo(() => DEFAULT_RECIPES.slice(0, 6), [])
 
-  const getApiKey = (): string => Taro.getStorageSync('DEEPSEEK_API_KEY') || ''
-
-  const safeParseJSON = (str: string): any => {
-    try {
-      const match = str.match(/\{[\s\S]*\}/)
-      if (match) return JSON.parse(match[0])
-      return JSON.parse(str)
-    } catch { return null }
-  }
-
   const handleGenerate = async () => {
     if (!inputValue.trim()) {
       Taro.showToast({ title: '先告诉我冰箱里有什么呀~', icon: 'none' })
-      return
-    }
-
-    const apiKey = getApiKey()
-    if (!apiKey) {
-      Taro.showModal({ title: '需要 API Key', content: '请先在微信小程序右上角设置中配置 DeepSeek API Key', confirmText: '知道了', showCancel: false })
       return
     }
 
@@ -59,47 +44,21 @@ export default function Index() {
     Taro.showLoading({ title: 'AI 正在构思食谱...' })
 
     try {
-      const response = await Taro.request({
-        url: 'https://api.deepseek.com/chat/completions',
-        method: 'POST',
-        header: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        data: {
-          model: "deepseek-chat",
-          messages: [
-            { role: "system", content: "你是一个专业的运动营养师和五星级大厨。请根据用户提供的食材，结合【跑者恢复】的营养需求，推荐一道最合适的菜。必须只返回纯 JSON 格式数据。JSON 格式要求：{ \"title\": \"菜名\", \"quote\": \"推荐理由\", \"steps\": [\"步骤1\"], \"ingredients\": [{\"name\": \"食材1\", \"amount\": \"用量\"}], \"time\": 20, \"difficulty\": \"简单\" }" },
-            { role: "user", content: `食材：${inputValue}。用户是刚结束训练的跑者，急需补充糖原和蛋白质。` }
-          ],
-          temperature: 1.0, max_tokens: 800
-        }
-      })
-
-      if (response.statusCode !== 200) throw new Error(`API 错误: ${response.statusCode}`)
-      const aiContent = response.data.choices?.[0]?.message?.content
-      if (!aiContent) throw new Error('API 返回为空')
-
-      const recipeData = safeParseJSON(aiContent.replace(/```json/g, '').replace(/```/g, '').trim())
-      if (!recipeData) throw new Error('无法解析菜谱数据')
-
-      const fullRecipe: Recipe = {
-        id: Date.now(),
-        title: recipeData.title || 'AI 推荐菜',
-        quote: recipeData.quote || '',
-        emoji: '🍳',
-        ingredients: recipeData.ingredients || [],
-        steps: (recipeData.steps || []).map((s: string, i: number) => ({ content: s, time: Math.floor(Math.random() * 10) + 5 })),
-        time: recipeData.time || 20,
-        difficulty: recipeData.difficulty || '简单',
-        tags: ['🏃 跑者专属'],
-        isFavorite: false
+      // 统一走 API 层
+      const ingredients = inputValue.split(/[,、]/).filter(Boolean)
+      const data = await fetchRecipes(ingredients, 1)
+      
+      if (data && data.length > 0) {
+        Taro.setStorageSync('currentRecipe', data[0])
+        Taro.hideLoading()
+        Taro.navigateTo({ url: `/pages/result/index?from=ai&ingredients=${encodeURIComponent(inputValue)}` })
+      } else {
+        throw new Error('AI 返回为空')
       }
-
-      Taro.setStorageSync('currentRecipe', fullRecipe)
-      Taro.hideLoading()
-      Taro.navigateTo({ url: `/pages/result/index?from=ai&ingredients=${encodeURIComponent(inputValue)}` })
     } catch (error: any) {
       console.error('API Error:', error)
       Taro.hideLoading()
-      Taro.showModal({ title: '生成失败', content: 'AI 厨师可能累了，请重试或检查网络', showCancel: false })
+      Taro.showModal({ title: '生成失败', content: error.message || 'AI 厨师可能累了，请重试', showCancel: false })
     } finally {
       setIsLoading(false)
     }
@@ -156,7 +115,6 @@ export default function Index() {
     recipeScroll: { marginBottom: '20px' } as React.CSSProperties,
     recipeList: { display: 'flex', gap: '12px', paddingBottom: '10px' } as React.CSSProperties,
     recipeCard: { width: '140px', backgroundColor: '#fff', borderRadius: '16px', padding: '16px', boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)', flexShrink: 0 } as React.CSSProperties,
-    recipeCardActive: { transform: 'scale(0.98)', opacity: 0.9, backgroundColor: '#f3f4f6' } as React.CSSProperties,
     recipeEmojiBg: { width: '48px', height: '48px', backgroundColor: '#fff7ed', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', marginBottom: '12px' } as React.CSSProperties,
     recipeTitle: { fontSize: '14px', fontWeight: '600', color: '#1a1a2e', marginBottom: '4px', display: 'block' } as React.CSSProperties,
     recipeTag: { fontSize: '12px', color: '#8e8e93' } as React.CSSProperties,
@@ -168,13 +126,11 @@ export default function Index() {
 
   return (
     <View style={S.page}>
-      {/* Header */}
       <View style={S.header}>
         <Text style={S.greeting}>你好 👋</Text>
         <Text style={S.subtitle}>今天想吃点啥？</Text>
       </View>
 
-      {/* Search Bar */}
       <View style={S.searchSection}>
         <View style={S.searchBar}>
           <Text style={S.searchIcon}>🔍</Text>
@@ -183,7 +139,6 @@ export default function Index() {
         </View>
       </View>
 
-      {/* 搜索历史 - 更醒目的展示 */}
       {showHistory && searchHistory.length > 0 && (
         <View style={S.historyBox}>
           <View style={S.historyHeader}>
@@ -192,15 +147,12 @@ export default function Index() {
           </View>
           <View style={S.historyList}>
             {searchHistory.slice(0, 8).map((keyword, idx) => (
-              <View key={idx} style={S.historyTag} onClick={() => handleHistoryClick(keyword)}>
-                {keyword}
-              </View>
+              <View key={idx} style={S.historyTag} onClick={() => handleHistoryClick(keyword)}>{keyword}</View>
             ))}
           </View>
         </View>
       )}
 
-      {/* Runner Section */}
       <View style={S.runnerSection}>
         <View style={S.runnerCard} onClick={() => Taro.showModal({ title: '🏃 黄金30分钟', content: '输入你冰箱里的食材，我帮你搭配最适合跑后恢复的餐！', confirmText: '好的', showCancel: false })}>
           <View style={S.runnerInfo}>
@@ -211,21 +163,15 @@ export default function Index() {
         </View>
       </View>
 
-      {/* Recipes Section */}
       <View style={S.recipesSection}>
         <View style={S.sectionHeader}>
           <Text style={S.sectionTitle}>为你推荐</Text>
           <Text style={S.sectionMore} onClick={handleRandom}>换一批 →</Text>
         </View>
-        
         <ScrollView scrollX={true} style={S.recipeScroll} enableFlex showScrollbar={false}>
           <View style={S.recipeList}>
             {recommendedRecipes.map((item) => (
-              <View 
-                key={item.id} 
-                style={S.recipeCard}
-                onClick={() => handleCardClick(item)}
-              >
+              <View key={item.id} style={S.recipeCard} onClick={() => handleCardClick(item)}>
                 <View style={S.recipeEmojiBg}><Text>{item.emoji}</Text></View>
                 <Text style={S.recipeTitle}>{item.title}</Text>
                 <Text style={S.recipeTag}>{item.time}分钟</Text>
@@ -235,20 +181,10 @@ export default function Index() {
         </ScrollView>
       </View>
 
-      {/* Quick Actions */}
       <View style={S.actionsSection}>
-        <View style={S.actionItem} onClick={handleClearFridge}>
-          <View style={S.actionEmoji}><Text>📷</Text></View>
-          <Text style={S.actionText}>清冰箱</Text>
-        </View>
-        <View style={S.actionItem} onClick={handleRandom}>
-          <View style={S.actionEmoji}><Text>🎲</Text></View>
-          <Text style={S.actionText}>随机</Text>
-        </View>
-        <View style={S.actionItem} onClick={handleFavorites}>
-          <View style={S.actionEmoji}><Text>❤️</Text></View>
-          <Text style={S.actionText}>收藏</Text>
-        </View>
+        <View style={S.actionItem} onClick={handleClearFridge}><View style={S.actionEmoji}><Text>📷</Text></View><Text style={S.actionText}>清冰箱</Text></View>
+        <View style={S.actionItem} onClick={handleRandom}><View style={S.actionEmoji}><Text>🎲</Text></View><Text style={S.actionText}>随机</Text></View>
+        <View style={S.actionItem} onClick={handleFavorites}><View style={S.actionEmoji}><Text>❤️</Text></View><Text style={S.actionText}>收藏</Text></View>
       </View>
     </View>
   )

@@ -156,3 +156,95 @@ export const checkApiKey = async (): Promise<{ valid: boolean; error?: string }>
     return { valid: false, error: e.message || '网络错误' }
   }
 }
+
+// ============ 场景化推荐 ============
+export type SceneType = 'runner' | 'quick' | 'muscle' | 'normal'
+
+const SCENE_PROMPTS: Record<SceneType, { system: string; user: string }> = {
+  runner: {
+    system: `你是一个国家级运动营养师。用户是月跑量200-300km的马拉松爱好者，刚刚完成训练。
+要求：
+- 重点补充糖原和蛋白质，3:1碳水蛋白比
+- 训练后30分钟内进食效果好
+- 避免高脂肪食物影响消化
+- 回答简洁专业，不超过50字`,
+    user: '食材：{ingredients}。请推荐1道适合跑步后补充能量的菜。'
+  },
+  quick: {
+    system: `你是五星级AI主厨。用户时间紧张，要求15分钟内完成。
+要求：
+- 步骤简单，不超过5步
+- 无需特殊调料
+- 成品要有锅气`,
+    user: '食材：{ingredients}。请推荐1道15分钟快手菜。'
+  },
+  muscle: {
+    system: `你是健美运动员的主厨。用户目的是增肌。
+要求：
+- 高蛋白（每道菜至少30g蛋白质）
+- 碳水精确配比
+- 烹饪方式简单`,
+    user: '食材：{ingredients}。请推荐1道适合增肌的高蛋白菜。'
+  },
+  normal: {
+    system: `你是一个五星级AI主厨和运动营养专家。
+根据用户食材，推荐最合适的菜谱。
+要求：
+- 营养均衡
+- 做法家常
+- 回答简洁`,
+    user: '食材：{ingredients}。请推荐1道家常菜。'
+  }
+}
+
+// 场景化推荐
+export const fetchRecipesByScene = async (
+  ingredients: string[],
+  scene: SceneType = 'normal',
+  config?: RequestConfig
+): Promise<Recipe[]> => {
+  const apiKey = getApiKey()
+  if (!apiKey) throw new APIError('请先在设置中添加 DeepSeek API Key', APIErrorType.NO_API_KEY)
+
+  const prompt = SCENE_PROMPTS[scene]
+  const systemPrompt = prompt.system
+  const userContent = prompt.user.replace('{ingredients}', ingredients.join('、'))
+
+  return requestWithRetry(async () => {
+    const response = await Taro.request({
+      url: `${API_BASE_URL}/chat/completions`,
+      method: 'POST',
+      header: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      data: {
+        model: DEFAULT_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 1.0,
+        max_tokens: 1500
+      },
+      timeout: config?.timeout || DEFAULT_CONFIG.timeout
+    })
+
+    if (response.statusCode !== 200) {
+      throw parseError(response.statusCode, response.data?.error?.message)
+    }
+    
+    const content = response.data.choices?.[0]?.message?.content
+    if (!content) throw new APIError('AI 返回为空', APIErrorType.PARSE_ERROR)
+
+    const data = safeParseJSON(content) as Recipe[]
+    if (!data || !Array.isArray(data) || data.length === 0) throw new APIError('无法解析菜谱数据', APIErrorType.PARSE_ERROR)
+
+    return data.map((r, idx) => ({
+      ...r,
+      id: Number(r.id) || Date.now() + idx,
+      isFavorite: false,
+      time: r.time || 20,
+      difficulty: r.difficulty || '中等',
+      tags: r.tags || ['🏃 跑者专属'],
+      steps: r.steps?.map((s: any) => typeof s === 'string' ? { content: s } : s) || []
+    }))
+  }, config?.retry || DEFAULT_CONFIG.retry!)
+}

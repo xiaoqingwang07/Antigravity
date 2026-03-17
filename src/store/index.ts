@@ -107,6 +107,7 @@ export const getCookedRecipes = (): (Recipe & { cookedAt: number })[] => {
 // ============ 缓存相关 ============
 const RECIPE_CACHE_KEY = 'recipeCache'
 const CACHE_EXPIRE = 24 * 60 * 60 * 1000 // 24小时
+const MAX_CACHE_SIZE = 50 // 最多缓存50条
 
 interface CacheItem {
   data: Recipe | Recipe[]
@@ -129,7 +130,15 @@ export const getCachedRecipe = (key: string): Recipe | Recipe[] | null => {
 
 export const setCachedRecipe = (key: string, data: Recipe | Recipe[]): void => {
   try {
-    const cache = (Taro.getStorageSync(RECIPE_CACHE_KEY) as Record<string, CacheItem>) || {}
+    let cache = (Taro.getStorageSync(RECIPE_CACHE_KEY) as Record<string, CacheItem>) || {}
+    
+    // 超过容量限制时，删除最老的缓存
+    if (Object.keys(cache).length >= MAX_CACHE_SIZE) {
+      const sorted = Object.entries(cache).sort((a, b) => a[1].timestamp - b[1].timestamp)
+      const toDelete = sorted.slice(0, Math.floor(MAX_CACHE_SIZE / 2))
+      toDelete.forEach(([k]) => delete cache[k])
+    }
+    
     cache[key] = { data, timestamp: Date.now() }
     Taro.setStorageSync(RECIPE_CACHE_KEY, cache)
   } catch (e) { console.error('Cache set failed:', e) }

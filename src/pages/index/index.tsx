@@ -1,9 +1,9 @@
-import { View, Text, Input, ScrollView } from '@tarojs/taro'
-import { useDidShow } from '@tarojs/taro'
+import { View, Text, Input, ScrollView } from '@tarojs/components'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
-import { DEFAULT_RECIPES } from '../../data/recipes'
 import { getSearchHistory, addSearchHistory, clearSearchHistory } from '../../store'
 import { fetchRecipes } from '../../api/recipe'
+import { getWeatherRecommendations } from '../../utils/recommend'
 import type { Recipe } from '../../types/recipe'
 import * as S from './styles'
 
@@ -12,6 +12,7 @@ export default function Index() {
   const [isLoading, setIsLoading] = useState(false)
   const [searchHistory, setSearchHistory] = useState<string[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const [recommendData, setRecommendData] = useState(() => getWeatherRecommendations(3))
 
   useDidShow(() => {
     const autoSearch = Taro.getStorageSync('autoSearchIngredient')
@@ -20,6 +21,7 @@ export default function Index() {
       Taro.removeStorageSync('autoSearchIngredient')
     }
     loadSearchHistory()
+    setRecommendData(getWeatherRecommendations(3))
   })
 
   const loadSearchHistory = () => {
@@ -29,7 +31,17 @@ export default function Index() {
     } catch (e) { console.error('Load history failed:', e) }
   }
 
-  const recommendedRecipes = DEFAULT_RECIPES.slice(0, 6)
+  const recommendedRecipes = recommendData.recipes
+  const weatherReason = recommendData.reason
+  const weatherEmoji = (() => {
+    const c = recommendData.weather.condition
+    if (c === 'rainy') return '🌧️'
+    if (c === 'snowy') return '❄️'
+    if (c === 'hot') return '☀️'
+    if (c === 'windy') return '💨'
+    if (c === 'cloudy') return '☁️'
+    return '🌤️'
+  })()
 
   const handleGenerate = async () => {
     if (!inputValue.trim()) {
@@ -67,12 +79,12 @@ export default function Index() {
   }
 
   const handleRandom = () => Taro.navigateTo({ url: '/pages/result/index?from=random' })
-  const handleClearFridge = () => Taro.navigateTo({ url: '/pages/fridge/index' })
-  const handleFavorites = () => Taro.switchTab({ url: '/pages/favorites/index' })
+  const handleClearFridge = () => Taro.switchTab({ url: '/pages/pick/index' })
+  const handleFavorites = () => Taro.navigateTo({ url: '/pages/favorites/index' })
 
   const handleCardClick = (item: Recipe) => {
     Taro.setStorageSync('selectedRecipeDetail', item)
-    Taro.navigateTo({ url: `/pages/result/index?from=preset&id=${item.id}` })
+    Taro.navigateTo({ url: '/pages/detail/index' })
   }
 
   const handleHistoryClick = (keyword: string) => {
@@ -128,19 +140,20 @@ export default function Index() {
         </View>
       )}
 
+      {/* Weather-driven recommendation banner */}
       <View style={S.runnerSectionStyle}>
-        <View style={S.runnerCardStyle} onClick={() => Taro.showModal({ title: '🏃 黄金30分钟', content: '输入你冰箱里的食材，我帮你搭配最适合跑后恢复的餐！', confirmText: '好的', showCancel: false })}>
+        <View style={S.runnerCardStyle} onClick={() => Taro.switchTab({ url: '/pages/pick/index' })}>
           <View style={S.runnerInfoStyle}>
-            <View style={S.runnerTagStyle}><Text>🏃 跑者专属</Text></View>
-            <Text style={S.runnerTitleStyle}>黄金30分钟</Text>
-            <Text style={S.runnerDescStyle}>训练后补充 3:1 碳水蛋白比</Text>
+            <View style={S.runnerTagStyle}><Text>{weatherEmoji} 今日推荐</Text></View>
+            <Text style={S.runnerTitleStyle}>{weatherReason}</Text>
+            <Text style={S.runnerDescStyle}>{recommendData.weather.temperature}°C · 零输入智能推荐</Text>
           </View>
         </View>
       </View>
 
       <View style={S.recipesSectionStyle}>
         <View style={S.sectionHeaderStyle}>
-          <Text style={S.sectionTitleStyle}>为你推荐</Text>
+          <Text style={S.sectionTitleStyle}>{weatherEmoji} 为你推荐</Text>
           <Text style={S.sectionMoreStyle} onClick={handleRandom}>换一批 →</Text>
         </View>
         <ScrollView scrollX={true} style={S.recipeScrollStyle} enableFlex showScrollbar={false}>
@@ -157,9 +170,13 @@ export default function Index() {
       </View>
 
       <View style={S.actionsSectionStyle}>
-        <View style={S.actionItemStyle} onClick={handleClearFridge}>
-          <View style={S.actionEmojiStyle}><Text>📷</Text></View>
-          <Text style={S.actionTextStyle}>清冰箱</Text>
+        <View style={S.actionItemStyle} onClick={() => Taro.switchTab({ url: '/pages/pick/index' })}>
+          <View style={S.actionEmojiStyle}><Text>🍳</Text></View>
+          <Text style={S.actionTextStyle}>选菜</Text>
+        </View>
+        <View style={S.actionItemStyle} onClick={() => Taro.switchTab({ url: '/pages/pantry/index' })}>
+          <View style={S.actionEmojiStyle}><Text>🧊</Text></View>
+          <Text style={S.actionTextStyle}>冰箱</Text>
         </View>
         <View style={S.actionItemStyle} onClick={handleRandom}>
           <View style={S.actionEmojiStyle}><Text>🎲</Text></View>

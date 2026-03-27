@@ -11,7 +11,7 @@ const config = {
     },
     sourceRoot: 'src',
     outputRoot: 'dist',
-    plugins: [],
+    plugins: ['@tarojs/plugin-platform-weapp'],
     defineConstants: {
     },
     copy: {

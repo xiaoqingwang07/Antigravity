@@ -1,5 +1,6 @@
-import { PropsWithChildren } from 'react'
+import { createElement, PropsWithChildren } from 'react'
 import { useLaunch } from '@tarojs/taro'
+import { StoreContext, rootStore } from './store/context'
 import './app.scss'
 
 function App({ children }: PropsWithChildren<any>) {
@@ -8,8 +9,7 @@ function App({ children }: PropsWithChildren<any>) {
         console.log('App launched.')
     })
 
-    // children 是将要会渲染的页面
-    return children
+    return createElement(StoreContext.Provider, { value: rootStore }, children)
 }
 
 export default App

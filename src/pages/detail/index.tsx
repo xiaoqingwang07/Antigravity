@@ -1,19 +1,70 @@
 import { View, Text, Button } from '@tarojs/components'
-import Taro from '@tarojs/taro'
-import { useState, useEffect, useMemo } from 'react'
+import Taro, { useRouter, useShareAppMessage, useShareTimeline } from '@tarojs/taro'
+import { useState, useEffect } from 'react'
+import { pantryStore } from '../../store/pantryStore'
+import { DEFAULT_RECIPES } from '../../data/recipes'
 import type { Recipe, Step } from '../../types/recipe'
 
+const SHARE_SNAPSHOT_KEY = 'sharedRecipeSnapshot'
+
 export default function Detail() {
+  const router = useRouter()
   const [recipe, setRecipe] = useState<Recipe | null>(null)
+  const [shareMiss, setShareMiss] = useState(false)
+
+  useShareAppMessage(() => {
+    if (!recipe) return { title: '爱心厨房 - 今天吃什么？', path: '/pages/index/index' }
+    try {
+      Taro.setStorageSync(SHARE_SNAPSHOT_KEY, recipe)
+    } catch (e) {
+      console.warn('share snapshot save failed', e)
+    }
+    return {
+      title: `今晚吃这个 👉【${recipe.title}】`,
+      path: `/pages/detail/index?shareId=${recipe.id}`,
+      imageUrl: recipe.image || '',
+    }
+  })
+
+  useShareTimeline(() => {
+    if (!recipe) return { title: '爱心厨房 - 今天吃什么？' }
+    return {
+      title: `${recipe.emoji || '🍽️'} ${recipe.title} | ${recipe.time || 20}分钟搞定`,
+    }
+  })
   const [cookingMode, setCookingMode] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const [stepTimer, setStepTimer] = useState<number | null>(null)
   const [timerRunning, setTimerRunning] = useState(false)
 
   useEffect(() => {
+    const shareId = router.params.shareId
+    if (shareId) {
+      const preset = DEFAULT_RECIPES.find(r => String(r.id) === String(shareId))
+      if (preset) {
+        setRecipe(preset)
+        setShareMiss(false)
+        return
+      }
+      try {
+        const snap = Taro.getStorageSync(SHARE_SNAPSHOT_KEY) as Recipe | null
+        if (snap && String(snap.id) === String(shareId)) {
+          setRecipe(snap)
+          setShareMiss(false)
+          return
+        }
+      } catch (e) {
+        console.warn('share snapshot read failed', e)
+      }
+      setRecipe(null)
+      setShareMiss(true)
+      return
+    }
+    setShareMiss(false)
     const data = Taro.getStorageSync('selectedRecipeDetail')
     if (data) setRecipe(data)
-  }, [])
+    else setRecipe(null)
+  }, [router.params.shareId])
 
   // 计时器
   useEffect(() => {
@@ -41,7 +92,29 @@ export default function Detail() {
   }
 
   const handleStartCooking = () => {
-    if (recipe?.steps && recipe.steps.length > 0) {
+    if (!recipe?.steps || recipe.steps.length === 0) return
+
+    const ingredientNames = (recipe.ingredients || []).map(i => i.name)
+    const hasMatchInPantry = ingredientNames.some(name =>
+      pantryStore.items.some(p => p.name === name)
+    )
+
+    if (hasMatchInPantry) {
+      Taro.showModal({
+        title: '库存联动',
+        content: '是否自动扣减冰箱中消耗的食材？',
+        confirmText: '扣减',
+        cancelText: '跳过',
+        success: (res) => {
+          if (res.confirm) {
+            const count = pantryStore.deductItems(ingredientNames)
+            Taro.showToast({ title: `已扣减 ${count} 项食材`, icon: 'success' })
+          }
+          setCookingMode(true)
+          setCurrentStep(0)
+        }
+      })
+    } else {
       setCookingMode(true)
       setCurrentStep(0)
     }
@@ -99,7 +172,16 @@ export default function Detail() {
           {step.time && step.time > 0 && (
             <View>
               {stepTimer !== null && <Text style={{ fontSize: '64px', fontWeight: '700', color: timerRunning ? '#f97316' : '#8e8e93', marginBottom: '20px', fontFamily: 'monospace' }}>{formatTime(stepTimer)}</Text>}
-              <Button style={{ backgroundColor: timerRunning ? '#374151' : '#f97316', color: '#fff', padding: '15px 40px', borderRadius: '999px', fontSize: '18px', border: 'none' }} onClick={() => timerRunning ? setTimerRunning(false) : startTimer(step.time || 1)}>
+              <Button style={{ backgroundColor: timerRunning ? '#374151' : '#f97316', color: '#fff', padding: '15px 40px', borderRadius: '999px', fontSize: '18px', border: 'none' }} onClick={() => {
+                if (timerRunning) {
+                  setTimerRunning(false)
+                } else {
+                  if (stepTimer === null || stepTimer <= 0) {
+                    setStepTimer((step.time || 1) * 60)
+                  }
+                  setTimerRunning(true)
+                }
+              }}>
                 {timerRunning ? '暂停' : stepTimer !== null ? '继续' : '开始计时'}
               </Button>
             </View>
@@ -121,7 +203,21 @@ export default function Detail() {
   }
 
   // ============ 普通模式 ============
-  if (!recipe) return <View style={{ padding: 40 }}><Text>Loading...</Text></View>
+  if (!recipe) {
+    if (shareMiss) {
+      return (
+        <View style={{ padding: 40, minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+          <Text style={{ fontSize: 16, color: '#6b7280', textAlign: 'center' }}>
+            无法加载该分享菜谱（非预埋菜或跨设备打开）。请使用首页搜索，或让对方在小程序内重新打开菜谱后再分享。
+          </Text>
+          <Button style={{ backgroundColor: '#f97316', color: '#fff', borderRadius: 999, border: 'none' }} onClick={() => Taro.switchTab({ url: '/pages/index/index' })}>
+            回首页
+          </Button>
+        </View>
+      )
+    }
+    return <View style={{ padding: 40 }}><Text>加载中…</Text></View>
+  }
 
   const steps = recipe.steps as Step[] || []
 

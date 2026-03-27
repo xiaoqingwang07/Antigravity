@@ -158,7 +158,6 @@ export const checkApiKey = async (): Promise<{ valid: boolean; error?: string }>
 }
 
 // ============ 场景化推荐 ============
-export type SceneType = 'runner' | 'quick' | 'muscle' | 'normal'
 
 const SCENE_PROMPTS: Record<SceneType, { system: string; user: string }> = {
   runner: {

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { DEFAULT_RECIPES } from '../../data/recipes'
 import { fetchRecipes } from '../../api/recipe'
 import { getFavoriteIds, toggleFavorite, generateCacheKey, getCachedRecipe, setCachedRecipe } from '../../store'
+import { matchRecipesSimple } from '../../utils/recipeMatch'
 import type { Recipe } from '../../types/recipe'
 
 export default function Result() {
@@ -12,69 +13,102 @@ export default function Result() {
   const [error, setError] = useState<string>('')
   const router = useRouter()
 
-  // 检查是否已收藏
   const checkFavorite = (recipeId: number | string): boolean => {
     return getFavoriteIds().includes(Number(recipeId))
   }
 
   useEffect(() => {
-    const { auto, ingredients, from } = router.params
-    const decodedIngredients = ingredients ? decodeURIComponent(ingredients) : ''
+    let cancelled = false
 
-    if (auto === 'true' && decodedIngredients) {
-      fetchAI(decodedIngredients.split(/[,、]/))
-    } else if (from === 'random') {
-      fetchRandom()
-    } else {
-      // 加载默认推荐
-      setRecipes(DEFAULT_RECIPES.slice(0, 6).map(r => ({
-        ...r,
-        isFavorite: checkFavorite(r.id)
-      })))
-    }
-  }, [router.params])
-
-  // AI 推荐（统一走 API 层）
-  const fetchAI = async (ingredients: string[]) => {
-    setIsLoading(true)
+    setIsLoading(false)
     setError('')
 
-    // 先检查缓存
-    const cacheKey = generateCacheKey(ingredients)
-    const cached = getCachedRecipe(cacheKey) as Recipe[] | null
-    if (cached) {
-      setRecipes(cached.map(r => ({ ...r, isFavorite: checkFavorite(r.id) })))
-      setIsLoading(false)
-      return
+    const safeSetError = (msg: string) => {
+      if (cancelled) return
+      setError(msg)
+    }
+    const safeSetLoading = (v: boolean) => {
+      if (cancelled) return
+      setIsLoading(v)
     }
 
-    try {
-      const data = await fetchRecipes(ingredients, 3)
-      
-      // 缓存结果
-      setCachedRecipe(cacheKey, data)
-      
-      setRecipes(data.map(r => ({ ...r, isFavorite: checkFavorite(r.id) })))
-    } catch (err: any) {
-      console.error('AI Error:', err)
-      setError(err.message || 'AI 暂时繁忙，已为你推荐热门菜谱')
+    const fetchAI = async (ingredients: string[]) => {
+      if (cancelled) return
+      safeSetLoading(true)
+      safeSetError('')
+
+      const cacheKey = generateCacheKey(ingredients)
+      const cached = getCachedRecipe(cacheKey) as Recipe[] | null
+      if (cached) {
+        if (cancelled) return
+        setRecipes(cached.map(r => ({ ...r, isFavorite: checkFavorite(r.id) })))
+        safeSetLoading(false)
+        return
+      }
+
+      try {
+        const data = await fetchRecipes(ingredients, 3)
+        if (cancelled) return
+        setCachedRecipe(cacheKey, data)
+        setRecipes(data.map(r => ({ ...r, isFavorite: checkFavorite(r.id) })))
+      } catch (err: any) {
+        if (cancelled) return
+        console.error('AI Error:', err)
+        setError(err.message || 'AI 暂时繁忙，已为你推荐热门菜谱')
+        setRecipes(DEFAULT_RECIPES.slice(0, 6).map(r => ({
+          ...r,
+          isFavorite: checkFavorite(r.id)
+        })))
+      } finally {
+        safeSetLoading(false)
+      }
+    }
+
+    const { auto, ingredients, from, id: presetId } = router.params
+    const decodedIngredients = ingredients ? decodeURIComponent(ingredients) : ''
+
+    if (from === 'pantry' && decodedIngredients) {
+      const list = decodedIngredients.split(/[,、]/).filter(Boolean)
+      const matched = matchRecipesSimple(list, 6)
+      if (cancelled) return
+      if (matched.length > 0) {
+        setRecipes(matched.map(r => ({ ...r, isFavorite: checkFavorite(r.id) })))
+      } else {
+        setError('本地菜谱库没有匹配结果，正在尝试 AI 推荐...')
+        void fetchAI(list)
+      }
+    } else if (from === 'ai' && decodedIngredients) {
+      void fetchAI(decodedIngredients.split(/[,、]/).filter(Boolean))
+    } else if (auto === 'true' && decodedIngredients) {
+      void fetchAI(decodedIngredients.split(/[,、]/).filter(Boolean))
+    } else if (from === 'random') {
+      if (cancelled) return
+      const shuffled = [...DEFAULT_RECIPES].sort(() => Math.random() - 0.5).slice(0, 6)
+      setRecipes(shuffled.map(r => ({
+        ...r,
+        isFavorite: checkFavorite(r.id)
+      })))
+    } else if (from === 'preset' && presetId) {
+      if (cancelled) return
+      const recipe = DEFAULT_RECIPES.find(r => String(r.id) === String(presetId))
+      if (recipe) {
+        setRecipes([{ ...recipe, isFavorite: checkFavorite(recipe.id) }])
+      } else {
+        setError('未找到该菜谱')
+        setRecipes([])
+      }
+    } else {
+      if (cancelled) return
       setRecipes(DEFAULT_RECIPES.slice(0, 6).map(r => ({
         ...r,
         isFavorite: checkFavorite(r.id)
       })))
-    } finally {
-      setIsLoading(false)
     }
-  }
 
-  // 随机推荐
-  const fetchRandom = () => {
-    const shuffled = [...DEFAULT_RECIPES].sort(() => Math.random() - 0.5).slice(0, 6)
-    setRecipes(shuffled.map(r => ({
-      ...r,
-      isFavorite: checkFavorite(r.id)
-    })))
-  }
+    return () => {
+      cancelled = true
+    }
+  }, [router.params])
 
   // 切换收藏
   const handleToggleFavorite = (recipe: Recipe) => {

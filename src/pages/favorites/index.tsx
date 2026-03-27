@@ -1,5 +1,6 @@
 import { View, Text } from '@tarojs/components'
-import { useEffect, useState } from 'react'
+import Taro, { useDidShow } from '@tarojs/taro'
+import { useCallback, useState } from 'react'
 import { getFavoriteDetails, toggleFavorite } from '../../store'
 import type { Recipe } from '../../types/recipe'
 import * as S from '../../styles/common'
@@ -8,23 +9,15 @@ export default function Favorites() {
   const [favorites, setFavorites] = useState<Recipe[]>([])
   const [isEmpty, setIsEmpty] = useState(true)
 
-  useEffect(() => {
-    loadFavorites()
-  }, [])
-
-  // 每次显示时重新加载
-  useEffect(() => {
-    const unsubscribe = Taro.eventCenter.on('onShow', () => {
-      loadFavorites()
-    })
-    return () => Taro.eventCenter.off('onShow', unsubscribe)
-  }, [])
-
-  const loadFavorites = () => {
+  const loadFavorites = useCallback(() => {
     const details = getFavoriteDetails()
     setFavorites(details)
     setIsEmpty(details.length === 0)
-  }
+  }, [])
+
+  useDidShow(() => {
+    loadFavorites()
+  })
 
   const removeFavorite = (recipe: Recipe) => {
     toggleFavorite(recipe)

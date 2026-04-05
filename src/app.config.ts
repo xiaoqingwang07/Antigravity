@@ -5,8 +5,7 @@ export default defineAppConfig({
     'pages/pantry/index',
     'pages/profile/index',
     'pages/result/index',
-    'pages/detail/index',
-    'pages/favorites/index'
+    'pages/detail/index'
   ],
   window: {
     backgroundTextStyle: 'light',
@@ -31,10 +30,6 @@ export default defineAppConfig({
       {
         pagePath: 'pages/pantry/index',
         text: '冰箱'
-      },
-      {
-        pagePath: 'pages/favorites/index',
-        text: '收藏'
       },
       {
         pagePath: 'pages/profile/index',

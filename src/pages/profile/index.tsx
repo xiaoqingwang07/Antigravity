@@ -1,13 +1,24 @@
-import { View, Text, Input, Button, ScrollView } from '@tarojs/components'
-import Taro from '@tarojs/taro'
-import { useState, useEffect } from 'react'
+import { View, Text, Input, Button, ScrollView, Image } from '@tarojs/components'
+import Taro, { useDidShow } from '@tarojs/taro'
+import { useState, useEffect, useCallback } from 'react'
 import { observer } from 'mobx-react-lite'
 import { usePantryStore } from '../../store/context'
-import { getFavoriteCount, getCookedRecipes, getSearchHistory, clearSearchHistory } from '../../store'
-import { checkApiKey, getLlmApiKey, getStoredScene, setStoredScene } from '../../api/recipe'
+import {
+  getFavoriteCount,
+  getFavoriteDetails,
+  getCookedRecipes,
+  getSearchHistory,
+  clearSearchHistory,
+  toggleFavorite,
+} from '../../store'
+import { checkApiKey, getLlmApiKey, getStoredScene, setStoredScene, usesLlmProxy } from '../../api/recipe'
+import { enrichRecipeMedia } from '../../utils/enrichRecipeMedia'
 import { D } from '../../theme/designTokens'
+import * as Com from '../../styles/common'
 import type { SceneType } from '../../types/recipe'
 import type { Recipe } from '../../types/recipe'
+
+const PROFILE_OPEN_FAVORITES = 'profileOpenFavorites'
 
 function Profile() {
   const pantryStore = usePantryStore()
@@ -22,6 +33,24 @@ function Profile() {
   const [dinersCount, setDinersCount] = useState(2)
   const [recipeScene, setRecipeScene] = useState<SceneType>(() => getStoredScene())
   const [apiKeyFromBuild, setApiKeyFromBuild] = useState(false)
+  const [showFavorites, setShowFavorites] = useState(false)
+  const [favoriteItems, setFavoriteItems] = useState<Recipe[]>([])
+
+  const loadFavoriteItems = useCallback(() => {
+    setFavoriteItems(getFavoriteDetails())
+  }, [])
+
+  useDidShow(() => {
+    loadFavoriteItems()
+    try {
+      if (Taro.getStorageSync(PROFILE_OPEN_FAVORITES)) {
+        Taro.removeStorageSync(PROFILE_OPEN_FAVORITES)
+        setShowFavorites(true)
+      }
+    } catch {
+      /* ignore */
+    }
+  })
 
   useEffect(() => {
     const stored =
@@ -30,6 +59,11 @@ function Profile() {
     const count = Taro.getStorageSync('defaultDinersCount') || 2
     setDinersCount(count)
     setRecipeScene(getStoredScene())
+    if (usesLlmProxy()) {
+      setApiKeyFromBuild(false)
+      void checkApiKey().then((r) => setApiKeyValid(r.valid))
+      return
+    }
     const injected = !stored && getLlmApiKey().length > 0
     setApiKeyFromBuild(injected)
     if (injected) {
@@ -50,7 +84,23 @@ function Profile() {
     Taro.showToast({ title: '已保存推荐场景', icon: 'success' })
   }
 
+  const handleTestLlmProxy = async () => {
+    Taro.showLoading({ title: '检测中…' })
+    const result = await checkApiKey()
+    Taro.hideLoading()
+    setApiKeyValid(result.valid)
+    if (result.valid) {
+      Taro.showToast({ title: '中转可用', icon: 'success' })
+    } else {
+      Taro.showModal({ title: '检测失败', content: result.error || '请检查 Vercel 环境与小程序 request 域名', showCancel: false })
+    }
+  }
+
   const handleSaveApiKey = async () => {
+    if (usesLlmProxy()) {
+      Taro.showToast({ title: '已启用服务端代理，无需在客户端保存 Key', icon: 'none' })
+      return
+    }
     if (!apiKey.trim()) {
       Taro.showToast({ title: '请输入 API Key', icon: 'none' })
       return
@@ -105,6 +155,104 @@ function Profile() {
     { label: '收藏菜谱', value: favCount, color: D.red },
     { label: '做过的菜', value: getCookedRecipes().length, color: D.green },
   ]
+
+  if (showFavorites) {
+    const isEmpty = favoriteItems.length === 0
+    return (
+      <View style={{ minHeight: '100vh', backgroundColor: D.bg }}>
+        <View
+          style={{
+            padding: '20px',
+            backgroundColor: D.bgElevated,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            borderBottom: `0.5px solid ${D.separatorLight}`,
+          }}
+        >
+          <Text style={{ fontSize: '16px', color: D.accent }} onClick={() => setShowFavorites(false)}>
+            ← 返回
+          </Text>
+          <Text style={{ fontSize: '18px', fontWeight: '700', color: D.label }}>我的收藏</Text>
+        </View>
+        <ScrollView scrollY style={{ flex: 1, padding: '20px' }}>
+          {isEmpty ? (
+            <View style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '48px' }}>
+              <Text style={{ fontSize: '48px', marginBottom: '12px' }}>⭐</Text>
+              <Text style={{ fontSize: '16px', fontWeight: '600', color: D.label, marginBottom: '8px' }}>暂无收藏</Text>
+              <Text style={{ fontSize: '14px', color: D.labelTertiary, textAlign: 'center', paddingLeft: 28, paddingRight: 28 }}>
+                在推荐列表点「♡」即可收藏
+              </Text>
+              <View style={{ marginTop: 24, width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <View
+                  style={{
+                    height: 48,
+                    borderRadius: 999,
+                    backgroundColor: D.accent,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onClick={() =>
+                    Taro.navigateTo({
+                      url: `/pages/result/index?from=random&scene=${getStoredScene()}`,
+                    })
+                  }
+                >
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: '#fff' }}>去看推荐</Text>
+                </View>
+              </View>
+            </View>
+          ) : (
+            favoriteItems.map((item, idx) => {
+              const r = enrichRecipeMedia(item)
+              return (
+                <View
+                  key={String(r.id ?? idx)}
+                  style={{ ...Com.cardRowStyle, marginBottom: 10 }}
+                  onClick={() => {
+                    Taro.setStorageSync('selectedRecipeDetail', r)
+                    Taro.navigateTo({ url: '/pages/detail/index' })
+                  }}
+                >
+                  <View style={Com.emojiBoxSmallStyle}>
+                    {r.image ? (
+                      <Image
+                        src={r.image}
+                        mode="aspectFill"
+                        style={{ width: '100%', height: '100%', display: 'block' }}
+                        lazyLoad
+                      />
+                    ) : (
+                      <Text>{r.emoji || '🥘'}</Text>
+                    )}
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={Com.titleStyle}>{r.title}</Text>
+                    <Text style={Com.textMutedStyle} numberOfLines={1}>
+                      {r.quote || r.nutritionAnalysis || '点击查看详情'}
+                    </Text>
+                  </View>
+                  <View
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleFavorite(r)
+                      loadFavoriteItems()
+                      Taro.showToast({ title: '已取消收藏', icon: 'none' })
+                    }}
+                    style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}
+                  >
+                    <Text style={{ fontSize: 18 }}>♥</Text>
+                    <Text style={{ fontSize: 10, color: D.labelTertiary, fontWeight: '600' }}>取消</Text>
+                  </View>
+                </View>
+              )
+            })
+          )}
+        </ScrollView>
+      </View>
+    )
+  }
 
   if (showSearchHistory) {
     return (
@@ -246,29 +394,49 @@ function Profile() {
             ))}
           </View>
         </View>
-        {/* API Key Setting */}
+        {/* LLM：服务端代理（推荐）或客户端 Key（仅开发） */}
         <View
           style={{ backgroundColor: D.bgElevated, borderRadius: D.radiusS, padding: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '14px', border: `0.5px solid ${D.separatorLight}`, boxShadow: D.shadowCard }}
-          onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+          onClick={() => !usesLlmProxy() && setShowApiKeyInput(!showApiKeyInput)}
         >
-          <Text style={{ fontSize: '24px' }}>🔑</Text>
+          <Text style={{ fontSize: '24px' }}>{usesLlmProxy() ? '🛡️' : '🔑'}</Text>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: '16px', fontWeight: '600', color: D.label, display: 'block' }}>MiniMax API Key</Text>
-            <Text style={{ fontSize: '13px', color: (apiKey.trim() || apiKeyFromBuild) ? (apiKeyValid === false ? D.red : D.green) : D.labelTertiary }}>
-              {apiKey.trim()
-                ? (apiKeyValid === false ? 'Key 无效' : `已配置 (${apiKey.slice(0, 8)}…)`)
-                : apiKeyFromBuild
-                  ? (apiKeyValid === false ? '本地配置的 Key 无效' : '已通过 .env.local 注入 MiniMax Key')
-                  : '未配置'}
+            <Text style={{ fontSize: '16px', fontWeight: '600', color: D.label, display: 'block' }}>
+              {usesLlmProxy() ? 'LLM 服务端代理' : 'MiniMax API Key'}
+            </Text>
+            <Text style={{ fontSize: '13px', color: usesLlmProxy() ? (apiKeyValid === false ? D.red : D.green) : (apiKey.trim() || apiKeyFromBuild) ? (apiKeyValid === false ? D.red : D.green) : D.labelTertiary }}>
+              {usesLlmProxy()
+                ? apiKeyValid === false
+                  ? '中转不可用，请检查部署与合法域名'
+                  : apiKeyValid === true
+                    ? '已启用：密钥在服务器，客户端不携带 Key'
+                    : '正在检测…'
+                : apiKey.trim()
+                  ? (apiKeyValid === false ? 'Key 无效' : `已配置 (${apiKey.slice(0, 8)}…)`)
+                  : apiKeyFromBuild
+                    ? (apiKeyValid === false ? '本地配置的 Key 无效' : '已通过 .env.local 注入 MiniMax Key')
+                    : '未配置'}
             </Text>
           </View>
-          <Text style={{ fontSize: '16px', color: D.labelTertiary }}>{showApiKeyInput ? '▾' : '›'}</Text>
+          {!usesLlmProxy() && <Text style={{ fontSize: '16px', color: D.labelTertiary }}>{showApiKeyInput ? '▾' : '›'}</Text>}
         </View>
 
-        {showApiKeyInput && (
+        {usesLlmProxy() && (
+          <View style={{ backgroundColor: D.bgElevated, borderRadius: D.radiusS, padding: '16px', marginBottom: '12px', marginTop: '-4px', border: `0.5px solid ${D.separatorLight}` }}>
+            <Text style={{ fontSize: 12, color: D.labelTertiary, marginBottom: 10, lineHeight: 1.45 }}>
+              构建时已注入 TARO_APP_LLM_PROXY_URL。请在微信公众平台将中转域名加入 request 合法域名；MiniMax 域名无需再配。
+            </Text>
+            <Button
+              style={{ height: '40px', backgroundColor: D.accent, color: '#fff', borderRadius: '20px', fontSize: '14px', border: 'none' }}
+              onClick={handleTestLlmProxy}
+            >检测中转连通性</Button>
+          </View>
+        )}
+
+        {!usesLlmProxy() && showApiKeyInput && (
           <View style={{ backgroundColor: D.bgElevated, borderRadius: D.radiusS, padding: '16px', marginBottom: '12px', marginTop: '-4px', border: `0.5px solid ${D.separatorLight}` }}>
             <Text style={{ fontSize: 12, color: D.labelTertiary, marginBottom: 8, lineHeight: 1.45 }}>
-              也可在项目根 .env.local 写入 TARO_APP_MINIMAX_API_KEY（勿提交）。接口域名为 api.minimaxi.com；小程序请在后台将 request 合法域名加入 https://api.minimaxi.com。此处填写会覆盖注入。
+              上线前请改用服务端中转（见仓库 api/llm-proxy.js 与 .env.local.example）。此处仅适合本地调试；也可在 .env.local 写 TARO_APP_MINIMAX_API_KEY（勿提交）。直连需将 https://api.minimaxi.com 加入小程序 request 合法域名。
             </Text>
             <Input
               style={{ height: '44px', backgroundColor: D.bg, borderRadius: '12px', padding: '0 16px', fontSize: '14px', marginBottom: '12px', border: `0.5px solid ${D.separatorLight}` }}
@@ -329,15 +497,15 @@ function Profile() {
           <Text style={{ fontSize: '16px', color: D.labelTertiary }}>›</Text>
         </View>
 
-        {/* Favorites */}
+        {/* 收藏（已并入本页，不再单独 Tab） */}
         <View
           style={{ backgroundColor: D.bgElevated, borderRadius: D.radiusS, padding: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '14px', border: `0.5px solid ${D.separatorLight}`, boxShadow: D.shadowCard }}
-          onClick={() => Taro.navigateTo({ url: '/pages/favorites/index' })}
+          onClick={() => setShowFavorites(true)}
         >
           <Text style={{ fontSize: '24px' }}>❤️</Text>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: '16px', fontWeight: '600', color: D.label, display: 'block' }}>我的收藏</Text>
-            <Text style={{ fontSize: '13px', color: D.labelTertiary }}>{favCount} 道收藏的菜谱</Text>
+            <Text style={{ fontSize: '13px', color: D.labelTertiary }}>{favCount} 道 · 点此查看与管理</Text>
           </View>
           <Text style={{ fontSize: '16px', color: D.labelTertiary }}>›</Text>
         </View>

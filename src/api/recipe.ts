@@ -6,6 +6,7 @@
 import Taro from '@tarojs/taro'
 import type { Recipe, SceneType } from '../types/recipe'
 import { enrichRecipeMedia } from '../utils/enrichRecipeMedia'
+import { parseLlmRecipeArray } from '../schemas/recipeLlm'
 
 /** OpenAI 兼容 Base URL（中国大陆：api.minimaxi.com，勿使用 api.minimax.io） */
 const API_BASE_URL = 'https://api.minimaxi.com/v1'
@@ -89,6 +90,62 @@ export const getDeepseekApiKey = getLlmApiKey
 
 const getApiKey = getLlmApiKey
 
+function proxyUrl(): string {
+  if (typeof TARO_APP_LLM_PROXY_URL !== 'string') return ''
+  return TARO_APP_LLM_PROXY_URL.trim()
+}
+
+function proxySecretHeader(): Record<string, string> {
+  if (typeof TARO_APP_LLM_PROXY_SECRET !== 'string') return {}
+  const s = TARO_APP_LLM_PROXY_SECRET.trim()
+  if (!s) return {}
+  return { 'X-LLM-Proxy-Secret': s }
+}
+
+/** 已配置构建期 LLM 中转 URL（生产环境应优先使用，避免 Key 进包） */
+export function usesLlmProxy(): boolean {
+  return proxyUrl().length > 0
+}
+
+async function llmChatCompletions(
+  body: Record<string, unknown>,
+  timeout: number
+): Promise<{ statusCode: number; data: unknown }> {
+  const p = proxyUrl()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...proxySecretHeader(),
+  }
+  let url: string
+  if (p) {
+    url = p
+  } else {
+    const apiKey = getApiKey()
+    if (!apiKey) {
+      throw new APIError(
+        '请配置服务端 LLM 中转（.env.local 中 TARO_APP_LLM_PROXY_URL），或仅在开发环境配置 TARO_APP_MINIMAX_API_KEY',
+        APIErrorType.NO_API_KEY
+      )
+    }
+    headers.Authorization = `Bearer ${apiKey}`
+    url = `${API_BASE_URL}/chat/completions`
+  }
+
+  const response = await Taro.request({
+    url,
+    method: 'POST',
+    header: headers,
+    data: body,
+    timeout,
+  })
+  return { statusCode: response.statusCode ?? 0, data: response.data }
+}
+
+function normalizeDifficulty(d?: string): Recipe['difficulty'] {
+  if (d === '简单' || d === '中等' || d === '复杂') return d
+  return '中等'
+}
+
 const safeParseJSON = (str: string): Recipe | Recipe[] | null => {
   try {
     const match = str.match(/(\{[\s\S]*\}|\[[\s\S]*\])/)
@@ -162,8 +219,12 @@ export const fetchRecipes = async (
   count: number = 3,
   config?: FetchRecipesOptions
 ): Promise<Recipe[]> => {
-  const apiKey = getApiKey()
-  if (!apiKey) throw new APIError('请先在设置中添加 MiniMax API Key，或在 .env.local 配置 TARO_APP_MINIMAX_API_KEY', APIErrorType.NO_API_KEY)
+  if (!usesLlmProxy() && !getApiKey()) {
+    throw new APIError(
+      '请配置 LLM：生产环境填写 TARO_APP_LLM_PROXY_URL（推荐），或开发时在「我的」/ .env.local 配置 MiniMax Key',
+      APIErrorType.NO_API_KEY
+    )
+  }
 
   const scene: SceneType = config?.scene ?? getStoredScene()
   const diners = config?.diners ?? getDiners()
@@ -179,43 +240,48 @@ ${SCENE_USER_TAIL[scene]}
 请推荐 ${count} 道菜。`
 
   return requestWithRetry(async () => {
-    const response = await Taro.request({
-      url: `${API_BASE_URL}/chat/completions`,
-      method: 'POST',
-      header: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      data: {
+    const { statusCode, data: rawData } = await llmChatCompletions(
+      {
         model: DEFAULT_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent }
+          { role: 'user', content: userContent },
         ],
         temperature: 0.75,
-        max_tokens: 2800
+        max_tokens: 2800,
       },
-      timeout: config?.timeout || DEFAULT_CONFIG.timeout
-    })
+      config?.timeout || DEFAULT_CONFIG.timeout
+    )
 
-    if (response.statusCode !== 200) {
-      const d = response.data as Record<string, unknown> | undefined
+    if (statusCode !== 200) {
+      const d = rawData as Record<string, unknown> | undefined
       const errObj = d?.error as { message?: string } | undefined
       const msg =
         errObj?.message ||
         (typeof d?.message === 'string' ? d.message : undefined) ||
         (typeof d?.msg === 'string' ? d.msg : undefined)
-      throw parseError(response.statusCode, msg)
+      throw parseError(statusCode, msg)
     }
 
-    const content = response.data.choices?.[0]?.message?.content
-    if (!content) throw new APIError('AI 返回为空', APIErrorType.PARSE_ERROR)
+    const dataObj = rawData as { choices?: { message?: { content?: string } }[] }
+    const content = dataObj?.choices?.[0]?.message?.content
+    if (!content || typeof content !== 'string') {
+      throw new APIError('AI 返回为空', APIErrorType.PARSE_ERROR)
+    }
 
-    const data = safeParseJSON(content) as Recipe[]
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      throw new APIError('无法解析菜谱数据', APIErrorType.PARSE_ERROR)
+    const parsedJson = safeParseJSON(content)
+    if (!parsedJson) {
+      throw new APIError('无法解析 AI 返回的 JSON', APIErrorType.PARSE_ERROR)
+    }
+
+    const validated = parseLlmRecipeArray(Array.isArray(parsedJson) ? parsedJson : [parsedJson])
+    if (validated.length === 0) {
+      throw new APIError('菜谱数据未通过校验（模型返回格式异常）', APIErrorType.PARSE_ERROR)
     }
 
     const tags = DEFAULT_TAGS[scene]
     const batchId = Date.now()
-    return data.map((r, idx) => {
+    return validated.map((r, idx) => {
       const stableId =
         r.id != null && String(r.id).trim() !== ''
           ? String(r.id)
@@ -225,34 +291,50 @@ ${SCENE_USER_TAIL[scene]}
         id: stableId,
         isFavorite: false,
         source: 'ai' as const,
-        time: r.time || 20,
-        difficulty: r.difficulty || '中等',
+        time: r.time ?? 20,
+        difficulty: normalizeDifficulty(r.difficulty),
         tags: r.tags?.length ? r.tags : tags,
-        steps: r.steps?.map((s: any) => (typeof s === 'string' ? { content: s } : s)) || []
+        steps: r.steps,
       })
     })
   }, config?.retry ?? DEFAULT_CONFIG.retry!)
 }
 
 export const checkApiKey = async (): Promise<{ valid: boolean; error?: string }> => {
+  if (usesLlmProxy()) {
+    try {
+      const { statusCode, data } = await llmChatCompletions(
+        { model: DEFAULT_MODEL, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 },
+        15000
+      )
+      if (statusCode === 200) return { valid: true }
+      if (statusCode === 401 || statusCode === 403) {
+        return { valid: false, error: '中转或上游鉴权失败' }
+      }
+      const d = data as Record<string, unknown> | undefined
+      const errObj = d?.error as { message?: string } | undefined
+      const hint = errObj?.message || (typeof d?.message === 'string' ? d.message : '')
+      return { valid: false, error: hint ? `${statusCode}: ${hint}` : `错误: ${statusCode}` }
+    } catch (e: any) {
+      return { valid: false, error: e.message || '网络错误' }
+    }
+  }
+
   const apiKey = getApiKey()
-  if (!apiKey) return { valid: false, error: '请先设置 API Key' }
+  if (!apiKey) return { valid: false, error: '请先设置 API Key 或配置 TARO_APP_LLM_PROXY_URL' }
   try {
-    const response = await Taro.request({
-      url: `${API_BASE_URL}/chat/completions`,
-      method: 'POST',
-      header: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      data: { model: DEFAULT_MODEL, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 },
-      timeout: 15000
-    })
-    if (response.statusCode === 200) return { valid: true }
-    if (response.statusCode === 401 || response.statusCode === 403) {
+    const { statusCode, data } = await llmChatCompletions(
+      { model: DEFAULT_MODEL, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 },
+      15000
+    )
+    if (statusCode === 200) return { valid: true }
+    if (statusCode === 401 || statusCode === 403) {
       return { valid: false, error: 'API Key 无效' }
     }
-    const d = response.data as Record<string, unknown> | undefined
+    const d = data as Record<string, unknown> | undefined
     const errObj = d?.error as { message?: string } | undefined
     const hint = errObj?.message || (typeof d?.message === 'string' ? d.message : '')
-    return { valid: false, error: hint ? `${response.statusCode}: ${hint}` : `错误: ${response.statusCode}` }
+    return { valid: false, error: hint ? `${statusCode}: ${hint}` : `错误: ${statusCode}` }
   } catch (e: any) {
     return { valid: false, error: e.message || '网络错误' }
   }

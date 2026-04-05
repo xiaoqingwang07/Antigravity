@@ -24,9 +24,13 @@ const _minimaxKey =
     process.env.TARO_APP_MINIMAX_API_KEY || _dotLocal.TARO_APP_MINIMAX_API_KEY || '';
 const _legacyDeepseek =
     process.env.TARO_APP_DEEPSEEK_API_KEY || _dotLocal.TARO_APP_DEEPSEEK_API_KEY || '';
+const _llmProxyUrl =
+    process.env.TARO_APP_LLM_PROXY_URL || _dotLocal.TARO_APP_LLM_PROXY_URL || '';
+const _llmProxySecret =
+    process.env.TARO_APP_LLM_PROXY_SECRET || _dotLocal.TARO_APP_LLM_PROXY_SECRET || '';
 
 const config = {
-    projectName: 'taste-lab-mvp',
+    projectName: 'love-kitchen',
     date: '2026-01-15',
     designWidth: 750,
     deviceRatio: {
@@ -40,6 +44,8 @@ const config = {
     defineConstants: {
         TARO_APP_MINIMAX_API_KEY: JSON.stringify(_minimaxKey),
         TARO_APP_DEEPSEEK_API_KEY: JSON.stringify(_legacyDeepseek),
+        TARO_APP_LLM_PROXY_URL: JSON.stringify(_llmProxyUrl),
+        TARO_APP_LLM_PROXY_SECRET: JSON.stringify(_llmProxySecret),
     },
     copy: {
         patterns: [

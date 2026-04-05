@@ -126,7 +126,17 @@ export default function Index() {
             先选场景；输入食材后点「搜索」或键盘搜索/回车即出菜谱
           </Text>
         </View>
-        <Text style={S.headerLinkStyle} onClick={() => Taro.navigateTo({ url: '/pages/favorites/index' })}>
+        <Text
+          style={S.headerLinkStyle}
+          onClick={() => {
+            try {
+              Taro.setStorageSync('profileOpenFavorites', '1')
+            } catch {
+              /* ignore */
+            }
+            Taro.switchTab({ url: '/pages/profile/index' })
+          }}
+        >
           收藏
         </Text>
       </View>

@@ -1,20 +1,36 @@
-import { View, Text } from '@tarojs/components'
+import { View, Text, Image } from '@tarojs/components'
 import Taro, { useRouter } from '@tarojs/taro'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef, type CSSProperties } from 'react'
 import { DEFAULT_RECIPES } from '../../data/recipes'
-import { fetchRecipes } from '../../api/recipe'
-import { getFavoriteIds, toggleFavorite, generateCacheKey, getCachedRecipe, setCachedRecipe } from '../../store'
+import { fetchRecipes, getStoredScene } from '../../api/recipe'
+import { getFavoriteIds, toggleFavorite, generateCacheKey, getCachedRecipe, setCachedRecipe, removeCachedRecipe } from '../../store'
 import { matchRecipesSimple } from '../../utils/recipeMatch'
-import type { Recipe } from '../../types/recipe'
+import { shuffleWithSeed, daySeed } from '../../utils/shuffleSeed'
+import { D } from '../../theme/designTokens'
+import { enrichRecipeMedia } from '../../utils/enrichRecipeMedia'
+import type { Recipe, SceneType } from '../../types/recipe'
+
+function parseScene(s: string | undefined): SceneType {
+  if (s === 'runner' || s === 'quick' || s === 'muscle' || s === 'normal') return s
+  return getStoredScene()
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  ai: 'AI',
+  cache: '缓存',
+  local: '本地',
+}
 
 export default function Result() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
+  const [reloadTick, setReloadTick] = useState(0)
+  const skipCacheOnceRef = useRef(false)
   const router = useRouter()
 
   const checkFavorite = (recipeId: number | string): boolean => {
-    return getFavoriteIds().includes(Number(recipeId))
+    return getFavoriteIds().includes(String(recipeId))
   }
 
   useEffect(() => {
@@ -32,94 +48,130 @@ export default function Result() {
       setIsLoading(v)
     }
 
-    const fetchAI = async (ingredients: string[]) => {
+    const fetchAI = async (ingredients: string[], scene: SceneType, bypassCache: boolean) => {
       if (cancelled) return
       safeSetLoading(true)
       safeSetError('')
 
-      const cacheKey = generateCacheKey(ingredients)
-      const cached = getCachedRecipe(cacheKey) as Recipe[] | null
+      const cacheKey = generateCacheKey(ingredients, scene)
+      const cached = !bypassCache ? (getCachedRecipe(cacheKey) as Recipe[] | null) : null
       if (cached) {
         if (cancelled) return
-        setRecipes(cached.map(r => ({ ...r, isFavorite: checkFavorite(r.id) })))
+        setRecipes(
+          cached.map((r) => ({
+            ...r,
+            source: 'cache' as const,
+            isFavorite: checkFavorite(r.id),
+          }))
+        )
         safeSetLoading(false)
         return
       }
 
       try {
-        const data = await fetchRecipes(ingredients, 3)
+        const data = await fetchRecipes(ingredients, 3, { scene })
         if (cancelled) return
         setCachedRecipe(cacheKey, data)
-        setRecipes(data.map(r => ({ ...r, isFavorite: checkFavorite(r.id) })))
+        setRecipes(
+          data.map((r) => ({
+            ...r,
+            source: 'ai' as const,
+            isFavorite: checkFavorite(r.id),
+          }))
+        )
       } catch (err: any) {
         if (cancelled) return
         console.error('AI Error:', err)
-        setError(err.message || 'AI 暂时繁忙，已为你推荐热门菜谱')
-        setRecipes(DEFAULT_RECIPES.slice(0, 6).map(r => ({
-          ...r,
-          isFavorite: checkFavorite(r.id)
-        })))
+        setError(err.message || '网络异常，已展示本地热门菜谱')
+        const seed = daySeed()
+        const shuffled = shuffleWithSeed([...DEFAULT_RECIPES], seed).slice(0, 6)
+        setRecipes(
+          shuffled.map((r) => ({
+            ...r,
+            source: 'local' as const,
+            isFavorite: checkFavorite(r.id),
+          }))
+        )
       } finally {
         safeSetLoading(false)
       }
     }
 
-    const { auto, ingredients, from, id: presetId } = router.params
+    const { auto, ingredients, from, id: presetId, scene: sceneParam } = router.params
     const decodedIngredients = ingredients ? decodeURIComponent(ingredients) : ''
+    const scene = parseScene(sceneParam)
 
     if (from === 'pantry' && decodedIngredients) {
       const list = decodedIngredients.split(/[,、]/).filter(Boolean)
       const matched = matchRecipesSimple(list, 6)
       if (cancelled) return
       if (matched.length > 0) {
-        setRecipes(matched.map(r => ({ ...r, isFavorite: checkFavorite(r.id) })))
+        setRecipes(
+          matched.map((r) => ({
+            ...r,
+            source: 'local' as const,
+            isFavorite: checkFavorite(r.id),
+          }))
+        )
       } else {
-        setError('本地菜谱库没有匹配结果，正在尝试 AI 推荐...')
-        void fetchAI(list)
+        setError('本地库暂无匹配，正在尝试 AI…')
+        void fetchAI(list, scene, false)
       }
-    } else if (from === 'ai' && decodedIngredients) {
-      void fetchAI(decodedIngredients.split(/[,、]/).filter(Boolean))
-    } else if (auto === 'true' && decodedIngredients) {
-      void fetchAI(decodedIngredients.split(/[,、]/).filter(Boolean))
+    } else if ((from === 'ai' || auto === 'true') && decodedIngredients) {
+      const skip = skipCacheOnceRef.current
+      skipCacheOnceRef.current = false
+      void fetchAI(decodedIngredients.split(/[,、]/).filter(Boolean), scene, skip)
     } else if (from === 'random') {
       if (cancelled) return
-      const shuffled = [...DEFAULT_RECIPES].sort(() => Math.random() - 0.5).slice(0, 6)
-      setRecipes(shuffled.map(r => ({
-        ...r,
-        isFavorite: checkFavorite(r.id)
-      })))
+      const shuffled = shuffleWithSeed([...DEFAULT_RECIPES], daySeed()).slice(0, 6)
+      setRecipes(
+        shuffled.map((r) => ({
+          ...r,
+          source: 'local' as const,
+          isFavorite: checkFavorite(r.id),
+        }))
+      )
     } else if (from === 'preset' && presetId) {
       if (cancelled) return
-      const recipe = DEFAULT_RECIPES.find(r => String(r.id) === String(presetId))
+      const recipe = DEFAULT_RECIPES.find((r) => String(r.id) === String(presetId))
       if (recipe) {
-        setRecipes([{ ...recipe, isFavorite: checkFavorite(recipe.id) }])
+        setRecipes([
+          {
+            ...recipe,
+            source: 'local' as const,
+            isFavorite: checkFavorite(recipe.id),
+          },
+        ])
       } else {
         setError('未找到该菜谱')
         setRecipes([])
       }
     } else {
       if (cancelled) return
-      setRecipes(DEFAULT_RECIPES.slice(0, 6).map(r => ({
-        ...r,
-        isFavorite: checkFavorite(r.id)
-      })))
+      const shuffled = shuffleWithSeed([...DEFAULT_RECIPES], daySeed()).slice(0, 6)
+      setRecipes(
+        shuffled.map((r) => ({
+          ...r,
+          source: 'local' as const,
+          isFavorite: checkFavorite(r.id),
+        }))
+      )
     }
 
     return () => {
       cancelled = true
     }
-  }, [router.params])
+  }, [router.params, reloadTick])
 
-  // 切换收藏
   const handleToggleFavorite = (recipe: Recipe) => {
     if (!recipe.id) return
     const isFav = toggleFavorite(recipe)
-    setRecipes(prev => prev.map(r => 
-      r.id === recipe.id ? { ...r, isFavorite: isFav } : r
-    ))
-    Taro.showToast({ 
-      title: isFav ? '收藏成功 ❤️' : '已取消收藏', 
-      icon: 'none' 
+    setRecipes((prev) =>
+      prev.map((r) => (String(r.id) === String(recipe.id) ? { ...r, isFavorite: isFav } : r))
+    )
+    Taro.showToast({
+      title: isFav ? '已收藏' : '已取消',
+      icon: 'none',
     })
   }
 
@@ -128,43 +180,144 @@ export default function Result() {
     Taro.navigateTo({ url: '/pages/detail/index' })
   }
 
-  // ============ Styles ============
-  const S = useMemo(() => ({
-    page: {
-      minHeight: '100vh',
-      backgroundColor: '#fafafa',
-      padding: '20px',
-      paddingBottom: '40px'
-    } as React.CSSProperties,
-    header: { marginBottom: '20px' } as React.CSSProperties,
-    title: { fontSize: '22px', fontWeight: '700', color: '#1a1a2e', marginBottom: '4px' } as React.CSSProperties,
-    subtitle: { fontSize: '14px', color: '#8e8e93' } as React.CSSProperties,
-    errorBox: { backgroundColor: '#fff7ed', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px', borderLeft: '3px solid #ff9a56' } as React.CSSProperties,
-    errorText: { fontSize: '14px', color: '#ea580c' } as React.CSSProperties,
-    listContainer: { display: 'flex', flexDirection: 'column', gap: '14px' } as React.CSSProperties,
-    card: { backgroundColor: '#ffffff', borderRadius: '18px', padding: '16px', display: 'flex', alignItems: 'center', gap: '14px', boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)' } as React.CSSProperties,
-    imgBox: { width: '72px', height: '72px', backgroundColor: '#fff7ed', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '36px', flexShrink: 0 } as React.CSSProperties,
-    infoBox: { flex: 1, minWidth: 0 } as React.CSSProperties,
-    cardTitle: { fontSize: '16px', fontWeight: '600', color: '#1a1a2e', marginBottom: '4px' } as React.CSSProperties,
-    quote: { fontSize: '13px', color: '#ff9a56', fontStyle: 'italic', marginBottom: '8px' } as React.CSSProperties,
-    metaRow: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const } as React.CSSProperties,
-    ratingBadge: { display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: '#fffbeb', padding: '2px 8px', borderRadius: '6px' } as React.CSSProperties,
-    star: { fontSize: '12px', color: '#fbbf24' } as React.CSSProperties,
-    rateVal: { fontSize: '12px', fontWeight: '600', color: '#d97706' } as React.CSSProperties,
-    countText: { fontSize: '12px', color: '#aeaeb2' } as React.CSSProperties,
-    timeTag: { fontSize: '12px', color: '#8e8e93', backgroundColor: '#f3f4f6', padding: '2px 8px', borderRadius: '4px' } as React.CSSProperties,
-    favBtn: { padding: '8px', fontSize: '20px', backgroundColor: 'transparent', border: 'none', lineHeight: 1 } as React.CSSProperties,
-    loadingBox: { height: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' } as React.CSSProperties,
-    loadingEmoji: { fontSize: '48px', marginBottom: '16px' } as React.CSSProperties,
-    loadingText: { color: '#8e8e93', fontSize: '15px', fontWeight: '500' } as React.CSSProperties
-  }), [])
+  const aiIngredientsList = router.params.ingredients
+    ? decodeURIComponent(router.params.ingredients).split(/[,、]/).filter(Boolean)
+    : []
+  const aiScene = parseScene(router.params.scene)
+  const showAiRegen =
+    (router.params.from === 'ai' || router.params.auto === 'true') && aiIngredientsList.length > 0
+
+  const handleRegenerateAi = () => {
+    const key = generateCacheKey(aiIngredientsList, aiScene)
+    removeCachedRecipe(key)
+    skipCacheOnceRef.current = true
+    setReloadTick((t) => t + 1)
+    Taro.showToast({ title: '正在重新生成…', icon: 'none' })
+  }
+
+  const S = useMemo(
+    () => ({
+      page: {
+        minHeight: '100vh',
+        backgroundColor: D.bg,
+        padding: `${D.pagePadTop}px ${D.pagePadH}px 40px`,
+      } as CSSProperties,
+      header: { marginBottom: 22 } as CSSProperties,
+      title: {
+        fontSize: D.titleLarge,
+        fontWeight: '700',
+        color: D.label,
+        marginBottom: 6,
+        letterSpacing: '-0.03em',
+      } as CSSProperties,
+      subtitle: { fontSize: D.footnote, color: D.labelSecondary } as CSSProperties,
+      errorBox: {
+        backgroundColor: D.bgElevated,
+        borderRadius: D.radiusM,
+        padding: '14px 16px',
+        marginBottom: 18,
+        border: `0.5px solid ${D.separator}`,
+      } as CSSProperties,
+      errorText: { fontSize: D.footnote, color: D.accentWarm, lineHeight: 1.45 } as CSSProperties,
+      listContainer: { display: 'flex', flexDirection: 'column', gap: 12 } as CSSProperties,
+      card: {
+        backgroundColor: D.bgElevated,
+        borderRadius: D.radiusL,
+        padding: '18px 18px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        border: `0.5px solid ${D.separatorLight}`,
+        boxShadow: D.shadowCard,
+      } as CSSProperties,
+      imgBox: {
+        width: 92,
+        height: 92,
+        backgroundColor: D.bg,
+        borderRadius: D.radiusS,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 34,
+        flexShrink: 0,
+        overflow: 'hidden',
+      } as CSSProperties,
+      infoBox: { flex: 1, minWidth: 0 } as CSSProperties,
+      cardTitle: {
+        fontSize: D.body,
+        fontWeight: '600',
+        color: D.label,
+        marginBottom: 4,
+      } as CSSProperties,
+      quote: {
+        fontSize: D.caption,
+        color: D.labelSecondary,
+        marginBottom: 8,
+        lineHeight: 1.4,
+      } as CSSProperties,
+      metaRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap' as const,
+      } as CSSProperties,
+      badge: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: D.accent,
+        backgroundColor: D.accentMuted,
+        padding: '3px 8px',
+        borderRadius: 6,
+      } as CSSProperties,
+      badgeAi: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: D.green,
+        backgroundColor: 'rgba(74, 124, 106, 0.14)',
+        padding: '3px 8px',
+        borderRadius: 6,
+      } as CSSProperties,
+      badgeCache: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: D.blue,
+        backgroundColor: 'rgba(90, 101, 112, 0.12)',
+        padding: '3px 8px',
+        borderRadius: 6,
+      } as CSSProperties,
+      timeTag: {
+        fontSize: D.caption,
+        color: D.labelTertiary,
+        backgroundColor: D.bg,
+        padding: '3px 8px',
+        borderRadius: 6,
+      } as CSSProperties,
+      favBtn: {
+        padding: 10,
+        fontSize: 22,
+        backgroundColor: 'transparent',
+        border: 'none',
+        lineHeight: 1,
+      } as CSSProperties,
+      loadingBox: {
+        height: '60vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column',
+      } as CSSProperties,
+      loadingEmoji: { fontSize: 48, marginBottom: 16 } as CSSProperties,
+      loadingText: { color: D.labelSecondary, fontSize: D.body, fontWeight: '500' } as CSSProperties,
+    }),
+    []
+  )
 
   if (isLoading) {
     return (
       <View style={{ ...S.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <View style={S.loadingBox}>
-          <Text style={S.loadingEmoji}>👨🍳</Text>
-          <Text style={S.loadingText}>AI 主厨正在定制菜谱...</Text>
+          <Text style={S.loadingEmoji}>🍳</Text>
+          <Text style={S.loadingText}>正在生成菜谱…</Text>
         </View>
       </View>
     )
@@ -173,45 +326,71 @@ export default function Result() {
   return (
     <View style={S.page}>
       <View style={S.header}>
-        <Text style={S.title}>为你推荐</Text>
-        <Text style={S.subtitle}>{recipes.length} 道适合你的美味</Text>
+        <Text style={S.title}>推荐</Text>
+        <Text style={S.subtitle}>
+          {recipes.length} 道 · 角标为来源 · 左侧为菜谱封面（步骤图见详情，与文案可能仅为氛围参考）
+        </Text>
+        {showAiRegen ? (
+          <Text
+            style={{ fontSize: 12, color: D.blue, fontWeight: '600', marginTop: 10 }}
+            onClick={handleRegenerateAi}
+          >
+            忽略缓存，重新生成
+          </Text>
+        ) : null}
       </View>
 
-      {error && (
+      {error ? (
         <View style={S.errorBox}>
           <Text style={S.errorText}>{error}</Text>
         </View>
-      )}
+      ) : null}
 
       <View style={S.listContainer}>
-        {recipes.map((item, idx) => (
-          <View 
-            key={item.id || idx} 
-            style={S.card}
-            onClick={() => goToDetail(item)}
-          >
+        {recipes.map((item, idx) => {
+          const r = enrichRecipeMedia(item)
+          const badgeSt =
+            r.source === 'ai' ? S.badgeAi : r.source === 'cache' ? S.badgeCache : S.badge
+          return (
+          <View key={r.id || idx} style={S.card} onClick={() => goToDetail(r)}>
             <View style={S.imgBox}>
-              <Text>{item.emoji || '🥘'}</Text>
+              {r.image ? (
+                <Image
+                  src={r.image}
+                  mode="aspectFill"
+                  style={{ width: '100%', height: '100%', display: 'block' }}
+                  lazyLoad
+                />
+              ) : (
+                <Text>{r.emoji || '🥘'}</Text>
+              )}
             </View>
             <View style={S.infoBox}>
-              <Text style={S.cardTitle}>{item.title}</Text>
-              {item.quote && <Text style={S.quote}>"{item.quote}"</Text>}
+              <Text style={S.cardTitle}>{r.title}</Text>
+              {r.quote ? (
+                <Text style={S.quote} numberOfLines={2}>
+                  {r.quote}
+                </Text>
+              ) : null}
               <View style={S.metaRow}>
-                {item.rating && (
-                  <View style={S.ratingBadge}>
-                    <Text style={S.star}>★</Text>
-                    <Text style={S.rateVal}>{item.rating}</Text>
-                  </View>
-                )}
-                <Text style={S.countText}>{item.count ? `${item.count}人做过` : '新品'}</Text>
-                {item.time && <Text style={S.timeTag}>{item.time}分钟</Text>}
+                {r.source ? (
+                  <Text style={badgeSt}>{SOURCE_LABEL[r.source] || r.source}</Text>
+                ) : null}
+                {r.time ? <Text style={S.timeTag}>{r.time} 分钟</Text> : null}
               </View>
             </View>
-            <View style={S.favBtn} onClick={(e) => { e.stopPropagation(); handleToggleFavorite(item) }}>
-              <Text>{item.isFavorite ? '❤️' : '🤍'}</Text>
+            <View
+              style={S.favBtn}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleToggleFavorite(r)
+              }}
+            >
+              <Text>{r.isFavorite ? '♥' : '♡'}</Text>
             </View>
           </View>
-        ))}
+          )
+        })}
       </View>
     </View>
   )

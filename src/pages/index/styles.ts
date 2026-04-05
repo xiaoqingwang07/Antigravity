@@ -1,238 +1,383 @@
 /**
- * 首页样式 - 提取到组件外避免重复创建
+ * 首页 — 双核：搜索 + 今日推荐；留白与层级克制
  */
+import type { CSSProperties } from 'react'
+import { D } from '../../theme/designTokens'
 
-// 页面样式
-export const pageStyle: React.CSSProperties = {
+export const pageStyle: CSSProperties = {
   minHeight: '100vh',
-  backgroundColor: '#fafafa',
-  paddingBottom: '100px'
+  backgroundColor: D.bg,
+  paddingBottom: '88px',
+  paddingTop: D.pagePadTop,
 }
 
-// 头部样式
-export const headerStyle: React.CSSProperties = {
-  padding: '20px'
+export const headerStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  paddingLeft: D.pagePadH,
+  paddingRight: D.pagePadH,
+  paddingTop: 28,
+  paddingBottom: 4,
+  alignItems: 'flex-start',
+  maxWidth: '100%',
 }
 
-export const greetingStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: '#8e8e93',
-  marginBottom: '4px'
+export const headerRowStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 12,
+  paddingLeft: D.pagePadH,
+  paddingRight: D.pagePadH,
+  paddingTop: 28,
+  paddingBottom: 4,
 }
 
-export const subtitleStyle: React.CSSProperties = {
-  fontSize: '28px',
+export const headerLinkStyle: CSSProperties = {
+  fontSize: 15,
+  fontWeight: '600',
+  color: D.accent,
+  paddingTop: 6,
+  flexShrink: 0,
+}
+
+export const titleStyle: CSSProperties = {
+  fontSize: 30,
   fontWeight: '700',
-  color: '#1a1a2e'
+  color: D.label,
+  letterSpacing: '-0.04em',
+  lineHeight: 1.2,
 }
 
-// 搜索区域
-export const searchSectionStyle: React.CSSProperties = {
-  padding: '0 20px 20px'
+export const titleHintStyle: CSSProperties = {
+  marginTop: 10,
+  fontSize: D.footnote,
+  color: D.labelTertiary,
+  fontWeight: '400',
+  letterSpacing: '0.02em',
+  lineHeight: 1.45,
+  maxWidth: '100%',
 }
 
-export const searchBarStyle: React.CSSProperties = {
-  backgroundColor: '#fff',
-  borderRadius: '16px',
+export const searchSectionStyle: CSSProperties = {
+  padding: `20px ${D.pagePadH} 10px`,
+}
+
+export const searchRowStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'stretch',
+  gap: 0,
+}
+
+export const searchBarWrapStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+}
+
+export const searchBarStyle: CSSProperties = {
+  backgroundColor: D.bgElevated,
+  borderRadius: D.radiusL,
   display: 'flex',
   alignItems: 'center',
-  padding: '12px 16px',
-  boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)'
+  padding: '12px 12px 12px 16px',
+  border: `0.5px solid ${D.separatorLight}`,
+  boxShadow: D.shadowCard,
+  height: '100%',
 }
 
-export const searchIconStyle: React.CSSProperties = {
-  fontSize: '16px',
-  marginRight: '10px'
+export const searchSubmitStyle: CSSProperties = {
+  flexShrink: 0,
+  padding: '10px 16px',
+  borderRadius: 999,
+  backgroundColor: D.label,
+  marginLeft: 8,
 }
 
-export const searchInputStyle: React.CSSProperties = {
-  flex: 1,
-  fontSize: '15px',
-  color: '#1a1a2e'
+export const searchSubmitTextStyle: CSSProperties = {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#fff',
 }
 
-export const placeholderStyle: React.CSSProperties = {
-  color: '#aeaeb2'
+export const searchIconStyle: CSSProperties = {
+  fontSize: 17,
+  marginRight: 12,
+  opacity: 0.4,
+  color: D.labelSecondary,
 }
 
-export const micBtnStyle: React.CSSProperties = {
-  padding: '8px',
-  fontSize: '18px'
+export const sceneRowStyle: CSSProperties = {
+  paddingLeft: D.pagePadH,
+  paddingRight: D.pagePadH,
+  paddingBottom: 4,
+  paddingTop: 2,
 }
 
-// 历史记录
-export const historyBoxStyle: React.CSSProperties = {
-  backgroundColor: '#fff',
-  borderRadius: '16px',
-  margin: '0 20px 20px',
-  padding: '16px',
-  boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)'
+export const sceneScrollStyle: CSSProperties = {
+  whiteSpace: 'nowrap' as const,
 }
 
-export const historyHeaderStyle: React.CSSProperties = {
+export const sceneChipStyle = (active: boolean): CSSProperties => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '5px 12px',
+  borderRadius: 999,
+  marginRight: 6,
+  fontSize: 12,
+  fontWeight: '500',
+  border: active ? `0.5px solid ${D.accent}` : `0.5px solid ${D.separator}`,
+  backgroundColor: active ? D.accentMuted : D.bgElevated,
+  color: active ? D.accent : D.labelSecondary,
+})
+
+export const historyBoxStyle: CSSProperties = {
+  backgroundColor: D.bgElevated,
+  borderRadius: D.radiusM,
+  margin: `0 ${D.pagePadH} 16px`,
+  padding: '16px 16px 12px',
+  border: `0.5px solid ${D.separatorLight}`,
+}
+
+export const historyHeaderStyle: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  marginBottom: '12px'
+  marginBottom: 12,
 }
 
-export const historyTitleStyle: React.CSSProperties = {
-  fontSize: '14px',
+export const historyTitleStyle: CSSProperties = {
+  fontSize: 11,
   fontWeight: '600',
-  color: '#374151'
+  color: D.labelTertiary,
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase' as const,
 }
 
-export const clearBtnStyle: React.CSSProperties = {
-  fontSize: '13px',
-  color: '#8e8e93'
+export const clearBtnStyle: CSSProperties = {
+  fontSize: D.footnote,
+  color: D.blue,
+  fontWeight: '500',
 }
 
-export const historyListStyle: React.CSSProperties = {
+export const historyListStyle: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
-  gap: '8px'
+  gap: 8,
 }
 
-export const historyTagStyle: React.CSSProperties = {
-  backgroundColor: '#f3f4f6',
-  padding: '6px 12px',
-  borderRadius: '8px',
-  fontSize: '13px',
-  color: '#4b5563'
+export const historyTagStyle: CSSProperties = {
+  backgroundColor: D.bg,
+  padding: '7px 12px',
+  borderRadius: 999,
+  fontSize: D.footnote,
+  color: D.label,
+  border: `0.5px solid ${D.separatorLight}`,
 }
 
-// 跑者专区
-export const runnerSectionStyle: React.CSSProperties = {
-  padding: '0 20px 20px'
+export const recipesSectionStyle: CSSProperties = {
+  padding: `8px ${D.pagePadH} 24px`,
 }
 
-export const runnerCardStyle: React.CSSProperties = {
-  backgroundColor: '#1a1a2e',
-  borderRadius: '20px',
-  padding: '20px',
+export const sectionHeaderBlockStyle: CSSProperties = {
+  marginBottom: 16,
+}
+
+export const sectionTitleStyle: CSSProperties = {
+  fontSize: 13,
+  fontWeight: '600',
+  color: D.labelSecondary,
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase' as const,
+  marginBottom: 8,
+}
+
+export const sectionLeadStyle: CSSProperties = {
+  fontSize: D.body,
+  fontWeight: '600',
+  color: D.label,
+  lineHeight: 1.45,
+  letterSpacing: '-0.02em',
+}
+
+export const sectionMetaRowStyle: CSSProperties = {
   display: 'flex',
-  justifyContent: 'space-between',
+  flexWrap: 'wrap',
   alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10,
+  rowGap: 8,
+  marginTop: 6,
+}
+
+export const sectionMetaTextStyle: CSSProperties = {
+  fontSize: D.footnote,
+  color: D.labelTertiary,
+  flex: 1,
+  minWidth: '60%',
+  lineHeight: 1.4,
+}
+
+export const sectionMoreStyle: CSSProperties = {
+  fontSize: D.footnote,
+  color: D.accent,
+  fontWeight: '600',
+  flexShrink: 0,
+}
+
+export const recipeListStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+}
+
+/** 扑克牌叠放：三张推荐，点按最上层或露出的边即可进详情 */
+export const deckWrapStyle: CSSProperties = {
+  position: 'relative',
+  width: '100%',
+  height: 212,
+  marginTop: 4,
+}
+
+export const deckCardStyle = (index: number): CSSProperties => {
+  const rotations = [-5, 2, 7]
+  const tops = [0, 14, 28]
+  const z = 30 - index * 10
+  return {
+    position: 'absolute',
+    left: '50%',
+    width: '88%',
+    marginLeft: '-44%',
+    top: tops[index] ?? 0,
+    zIndex: z,
+    transform: `rotate(${rotations[index] ?? 0}deg)`,
+    borderRadius: D.radiusM,
+    overflow: 'hidden',
+    backgroundColor: D.bgElevated,
+    border: `0.5px solid ${D.separatorLight}`,
+    boxShadow: '0 10px 28px rgba(18, 22, 28, 0.12)',
+    display: 'flex',
+    flexDirection: 'row',
+    minHeight: 118,
+  }
+}
+
+export const deckThumbWrapStyle: CSSProperties = {
+  width: 100,
+  height: 100,
+  flexShrink: 0,
+  backgroundColor: D.bg,
+}
+
+export const deckBodyStyle: CSSProperties = {
+  flex: 1,
+  padding: '12px 14px',
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  minWidth: 0,
+}
+
+export const deckTitleStyle: CSSProperties = {
+  fontSize: 15,
+  fontWeight: '600',
+  color: D.label,
+  lineHeight: 1.35,
+  letterSpacing: '-0.02em',
+}
+
+export const deckTagStyle: CSSProperties = {
+  fontSize: D.caption,
+  color: D.labelTertiary,
+  fontWeight: '500',
+  marginTop: 6,
+}
+
+export const moreStripTitleStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: '600',
+  color: D.labelSecondary,
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase' as const,
+  marginTop: 20,
+  marginBottom: 10,
+}
+
+export const moreStripScrollStyle: CSSProperties = {
+  whiteSpace: 'nowrap' as const,
+  marginBottom: 8,
+}
+
+export const moreChipStyle: CSSProperties = {
+  display: 'inline-flex',
+  flexDirection: 'column',
+  width: 108,
+  marginRight: 10,
+  verticalAlign: 'top' as const,
+  backgroundColor: D.bgElevated,
+  borderRadius: D.radiusS,
   overflow: 'hidden',
-  position: 'relative'
+  border: `0.5px solid ${D.separatorLight}`,
+  boxShadow: D.shadowCard,
 }
 
-export const runnerInfoStyle: React.CSSProperties = {
-  zIndex: 1
-}
-
-export const runnerTagStyle: React.CSSProperties = {
-  backgroundColor: 'rgba(249, 115, 22, 0.2)',
-  color: '#f97316',
-  fontSize: '12px',
-  padding: '4px 10px',
-  borderRadius: '6px',
-  display: 'inline-block',
-  marginBottom: '8px'
-}
-
-export const runnerTitleStyle: React.CSSProperties = {
-  color: '#fff',
-  fontSize: '20px',
-  fontWeight: '700',
-  marginBottom: '4px',
-  display: 'block'
-}
-
-export const runnerDescStyle: React.CSSProperties = {
-  color: 'rgba(255,255,255,0.7)',
-  fontSize: '13px'
-}
-
-// 推荐食谱
-export const recipesSectionStyle: React.CSSProperties = {
-  padding: '0 20px'
-}
-
-export const sectionHeaderStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: '16px'
-}
-
-export const sectionTitleStyle: React.CSSProperties = {
-  fontSize: '18px',
-  fontWeight: '700',
-  color: '#1a1a2e'
-}
-
-export const sectionMoreStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: '#8e8e93'
-}
-
-export const recipeScrollStyle: React.CSSProperties = {
-  marginBottom: '20px'
-}
-
-export const recipeListStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '12px',
-  paddingBottom: '10px'
-}
-
-export const recipeCardStyle: React.CSSProperties = {
-  width: '140px',
-  backgroundColor: '#fff',
-  borderRadius: '16px',
-  padding: '16px',
-  boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)',
-  flexShrink: 0
-}
-
-export const recipeEmojiBgStyle: React.CSSProperties = {
-  width: '48px',
-  height: '48px',
-  backgroundColor: '#fff7ed',
-  borderRadius: '12px',
+export const moreChipThumbStyle: CSSProperties = {
+  width: '100%',
+  height: 72,
+  backgroundColor: D.bg,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: '24px',
-  marginBottom: '12px'
 }
 
-export const recipeTitleStyle: React.CSSProperties = {
-  fontSize: '14px',
+export const moreChipTitleStyle: CSSProperties = {
+  fontSize: 12,
   fontWeight: '600',
-  color: '#1a1a2e',
-  marginBottom: '4px',
-  display: 'block'
+  color: D.label,
+  padding: '8px 10px 10px',
+  lineHeight: 1.35,
+  whiteSpace: 'normal' as const,
 }
 
-export const recipeTagStyle: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#8e8e93'
-}
-
-// 底部操作栏
-export const actionsSectionStyle: React.CSSProperties = {
+export const recipeRowCardStyle: CSSProperties = {
   display: 'flex',
-  justifyContent: 'space-around',
-  padding: '20px',
-  backgroundColor: '#fff',
-  marginTop: '20px',
-  borderTop: '1px solid #f3f4f6'
+  flexDirection: 'row',
+  backgroundColor: D.bgElevated,
+  borderRadius: D.radiusM,
+  overflow: 'hidden',
+  border: `0.5px solid ${D.separatorLight}`,
+  boxShadow: D.shadowCard,
 }
 
-export const actionItemStyle: React.CSSProperties = {
+export const recipeThumbWrapStyle: CSSProperties = {
+  width: 112,
+  height: 112,
+  flexShrink: 0,
+  backgroundColor: D.bg,
+}
+
+export const recipeRowBodyStyle: CSSProperties = {
+  flex: 1,
+  padding: '14px 16px',
   display: 'flex',
   flexDirection: 'column',
-  alignItems: 'center',
-  gap: '8px'
+  justifyContent: 'center',
+  minWidth: 0,
 }
 
-export const actionEmojiStyle: React.CSSProperties = {
-  fontSize: '28px'
+export const recipeTitleStyle: CSSProperties = {
+  fontSize: 16,
+  fontWeight: '600',
+  color: D.label,
+  marginBottom: 6,
+  display: 'block',
+  lineHeight: 1.35,
+  letterSpacing: '-0.02em',
 }
 
-export const actionTextStyle: React.CSSProperties = {
-  fontSize: '13px',
-  color: '#4b5563'
+export const recipeTagStyle: CSSProperties = {
+  fontSize: D.caption,
+  color: D.labelTertiary,
+  fontWeight: '500',
 }

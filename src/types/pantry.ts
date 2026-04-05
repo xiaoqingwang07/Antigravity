@@ -1,3 +1,5 @@
+import type { FridgeSide } from './fridge'
+
 export type FoodCategory =
   | 'vegetable'
   | 'meat'
@@ -17,6 +19,10 @@ export interface PantryItem {
   addedAt: number
   expiresAt: number
   defaultShelfLife: number
+  /** 冷冻 | 冷藏；与冰箱 UI 格位对应 */
+  side: FridgeSide
+  /** 0–4 抽拉层（自上而下），5–6 抽屉 */
+  slotIndex: number
 }
 
 export type FreshnessStatus = 'fresh' | 'expiring' | 'expired'

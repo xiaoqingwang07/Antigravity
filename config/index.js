@@ -1,4 +1,29 @@
 const path = require('path');
+const fs = require('fs');
+
+function loadDotEnvLocal() {
+    const p = path.join(__dirname, '..', '.env.local');
+    if (!fs.existsSync(p)) return {};
+    const out = {};
+    fs.readFileSync(p, 'utf8').split('\n').forEach((line) => {
+        const t = line.trim();
+        if (!t || t.startsWith('#')) return;
+        const i = t.indexOf('=');
+        if (i <= 0) return;
+        const k = t.slice(0, i).trim();
+        let v = t.slice(i + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))
+            v = v.slice(1, -1);
+        out[k] = v;
+    });
+    return out;
+}
+
+const _dotLocal = loadDotEnvLocal();
+const _minimaxKey =
+    process.env.TARO_APP_MINIMAX_API_KEY || _dotLocal.TARO_APP_MINIMAX_API_KEY || '';
+const _legacyDeepseek =
+    process.env.TARO_APP_DEEPSEEK_API_KEY || _dotLocal.TARO_APP_DEEPSEEK_API_KEY || '';
 
 const config = {
     projectName: 'taste-lab-mvp',
@@ -13,6 +38,8 @@ const config = {
     outputRoot: 'dist',
     plugins: ['@tarojs/plugin-platform-weapp'],
     defineConstants: {
+        TARO_APP_MINIMAX_API_KEY: JSON.stringify(_minimaxKey),
+        TARO_APP_DEEPSEEK_API_KEY: JSON.stringify(_legacyDeepseek),
     },
     copy: {
         patterns: [
@@ -51,6 +78,19 @@ const config = {
     h5: {
         publicPath: '/',
         staticDirectory: 'static',
+        devServer: {
+            client: {
+                overlay: false
+            }
+        },
+        // Taro 会先 merge 用户 devServer 再 merge chain，chain 里默认 overlay:true 会盖住上面；在 chain 末尾再关一次
+        webpackChain(chain) {
+            chain.devServer.merge({
+                client: {
+                    overlay: false
+                }
+            })
+        },
         postcss: {
             autoprefixer: {
                 enable: true,

@@ -20,8 +20,9 @@ export function matchRecipes(selectedIngredients: string[], limit: number = 6): 
   const results: MatchResult[] = DEFAULT_RECIPES
     .map(recipe => {
       const recipeIngredientNames = (recipe.ingredients || []).map(i => i.name)
+      const selectedArr = Array.from(selected)
       const matched = recipeIngredientNames.filter(name =>
-        selected.has(name) || [...selected].some(s => name.includes(s) || s.includes(name))
+        selected.has(name) || selectedArr.some(s => name.includes(s) || s.includes(name))
       )
       const matchCount = matched.length
       const coverageRate = recipeIngredientNames.length > 0

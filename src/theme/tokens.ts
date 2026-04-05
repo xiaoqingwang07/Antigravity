@@ -1,0 +1,43 @@
+/**
+ * Apple-like visual tokens：留白、中性灰、柔和强调色
+ */
+export const tokens = {
+  bgGrouped: '#F2F2F7',
+  bgElevated: '#FFFFFF',
+  bgSecondary: '#FAFAFA',
+  labelPrimary: '#1C1C1E',
+  labelSecondary: 'rgba(60, 60, 67, 0.6)',
+  labelTertiary: 'rgba(60, 60, 67, 0.45)',
+  separator: 'rgba(60, 60, 67, 0.12)',
+  accent: '#5C4D3F',
+  accentPressed: '#4A3D32',
+  accentSoft: 'rgba(92, 77, 63, 0.12)',
+  accentMuted: 'rgba(92, 77, 63, 0.08)',
+  fillQuaternary: 'rgba(120, 120, 128, 0.12)',
+  success: '#34C759',
+  danger: '#FF3B30',
+  radiusXL: 22,
+  radiusL: 16,
+  radiusM: 12,
+  radiusS: 10,
+  spaceXs: 6,
+  spaceSm: 10,
+  spaceMd: 16,
+  spaceLg: 22,
+  spaceXl: 28,
+  space2xl: 40,
+  titleLarge: 34,
+  title1: 28,
+  title2: 22,
+  title3: 17,
+  body: 17,
+  callout: 16,
+  subhead: 15,
+  footnote: 13,
+  caption: 12,
+  shadowSm: '0 1px 2px rgba(0, 0, 0, 0.04)',
+  shadowCard: '0 2px 16px rgba(0, 0, 0, 0.06)',
+  hairline: '0.5px solid rgba(60, 60, 67, 0.18)',
+} as const
+
+export const RECIPE_SCENE_STORAGE_KEY = 'recipeScene'

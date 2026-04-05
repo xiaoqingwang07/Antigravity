@@ -1,16 +1,19 @@
 /**
  * 通用样式 - 跨页面复用
  */
+import type { CSSProperties } from 'react'
+import { D } from '../theme/designTokens'
 
 // ============ 卡片样式 ============
-export const cardStyle: React.CSSProperties = {
-  backgroundColor: '#ffffff',
-  borderRadius: '18px',
-  padding: '16px',
-  boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)'
+export const cardStyle: CSSProperties = {
+  backgroundColor: D.bgElevated,
+  borderRadius: D.radiusL,
+  padding: '18px',
+  border: `0.5px solid ${D.separatorLight}`,
+  boxShadow: D.shadowCard,
 }
 
-export const cardRowStyle: React.CSSProperties = {
+export const cardRowStyle: CSSProperties = {
   ...cardStyle,
   display: 'flex',
   alignItems: 'center',
@@ -18,11 +21,11 @@ export const cardRowStyle: React.CSSProperties = {
 }
 
 // ============ 图片盒子 ============
-export const emojiBoxStyle: React.CSSProperties = {
+export const emojiBoxStyle: CSSProperties = {
   width: '72px',
   height: '72px',
-  backgroundColor: '#fff7ed',
-  borderRadius: '14px',
+  backgroundColor: D.bg,
+  borderRadius: '16px',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -30,47 +33,49 @@ export const emojiBoxStyle: React.CSSProperties = {
   flexShrink: 0
 }
 
-export const emojiBoxSmallStyle: React.CSSProperties = {
+export const emojiBoxSmallStyle: CSSProperties = {
   ...emojiBoxStyle,
   width: '64px',
   height: '64px',
-  fontSize: '32px'
+  fontSize: '32px',
+  overflow: 'hidden',
 }
 
 // ============ 文字样式 ============
-export const titleStyle: React.CSSProperties = {
-  fontSize: '16px',
+export const titleStyle: CSSProperties = {
+  fontSize: '17px',
   fontWeight: '600',
-  color: '#1a1a2e',
+  color: D.label,
   marginBottom: '4px'
 }
 
-export const titleLargeStyle: React.CSSProperties = {
-  fontSize: '22px',
+export const titleLargeStyle: CSSProperties = {
+  fontSize: '28px',
   fontWeight: '700',
-  color: '#1a1a2e',
-  marginBottom: '4px'
+  color: D.label,
+  marginBottom: '6px',
+  letterSpacing: '-0.03em',
 }
 
-export const subtitleStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: '#8e8e93'
-}
-
-export const quoteStyle: React.CSSProperties = {
+export const subtitleStyle: CSSProperties = {
   fontSize: '13px',
-  color: '#ff9a56',
+  color: D.labelSecondary
+}
+
+export const quoteStyle: CSSProperties = {
+  fontSize: '13px',
+  color: D.accentWarm,
   fontStyle: 'italic',
   marginBottom: '8px'
 }
 
-export const textMutedStyle: React.CSSProperties = {
+export const textMutedStyle: CSSProperties = {
   fontSize: '13px',
-  color: '#aeaeb2'
+  color: D.labelTertiary
 }
 
 // ============ 标签样式 ============
-export const tagStyle: React.CSSProperties = {
+export const tagStyle: CSSProperties = {
   fontSize: '12px',
   color: '#8e8e93',
   backgroundColor: '#f3f4f6',
@@ -78,7 +83,7 @@ export const tagStyle: React.CSSProperties = {
   borderRadius: '4px'
 }
 
-export const ratingBadgeStyle: React.CSSProperties = {
+export const ratingBadgeStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '3px',
@@ -88,20 +93,20 @@ export const ratingBadgeStyle: React.CSSProperties = {
 }
 
 // ============ 页面容器 ============
-export const pageStyle: React.CSSProperties = {
+export const pageStyle: CSSProperties = {
   minHeight: '100vh',
-  backgroundColor: '#fafafa',
-  padding: '20px',
+  backgroundColor: D.bg,
+  padding: `12px ${D.pagePadH}px`,
   paddingBottom: '40px'
 }
 
-export const pageWithHeaderStyle: React.CSSProperties = {
+export const pageWithHeaderStyle: CSSProperties = {
   ...pageStyle,
   paddingTop: '0'
 }
 
 // ============ 空状态 ============
-export const emptyStyle: React.CSSProperties = {
+export const emptyStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -109,26 +114,26 @@ export const emptyStyle: React.CSSProperties = {
   paddingTop: '100px'
 }
 
-export const emptyEmojiStyle: React.CSSProperties = {
+export const emptyEmojiStyle: CSSProperties = {
   fontSize: '64px',
   marginBottom: '20px'
 }
 
-export const emptyTitleStyle: React.CSSProperties = {
+export const emptyTitleStyle: CSSProperties = {
   fontSize: '18px',
   fontWeight: '600',
-  color: '#1a1a2e',
+  color: D.label,
   marginBottom: '8px'
 }
 
-export const emptyDescStyle: React.CSSProperties = {
+export const emptyDescStyle: CSSProperties = {
   fontSize: '14px',
-  color: '#aeaeb2',
+  color: D.labelTertiary,
   textAlign: 'center'
 }
 
 // ============ 加载状态 ============
-export const loadingStyle: React.CSSProperties = {
+export const loadingStyle: CSSProperties = {
   height: '60vh',
   display: 'flex',
   alignItems: 'center',
@@ -136,19 +141,19 @@ export const loadingStyle: React.CSSProperties = {
   flexDirection: 'column'
 }
 
-export const loadingEmojiStyle: React.CSSProperties = {
+export const loadingEmojiStyle: CSSProperties = {
   fontSize: '48px',
   marginBottom: '16px'
 }
 
-export const loadingTextStyle: React.CSSProperties = {
+export const loadingTextStyle: CSSProperties = {
   color: '#8e8e93',
   fontSize: '15px',
   fontWeight: '500'
 }
 
 // ============ 错误提示 ============
-export const errorBoxStyle: React.CSSProperties = {
+export const errorBoxStyle: CSSProperties = {
   backgroundColor: '#fff7ed',
   borderRadius: '12px',
   padding: '14px 16px',
@@ -156,20 +161,20 @@ export const errorBoxStyle: React.CSSProperties = {
   borderLeft: '3px solid #ff9a56'
 }
 
-export const errorTextStyle: React.CSSProperties = {
+export const errorTextStyle: CSSProperties = {
   fontSize: '14px',
   color: '#ea580c'
 }
 
 // ============ 列表样式 ============
-export const listStyle: React.CSSProperties = {
+export const listStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '14px'
 }
 
 // ============ 信息行 ============
-export const metaRowStyle: React.CSSProperties = {
+export const metaRowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
@@ -177,10 +182,10 @@ export const metaRowStyle: React.CSSProperties = {
 }
 
 // ============ 头部 ============
-export const headerStyle: React.CSSProperties = {
+export const headerStyle: CSSProperties = {
   marginBottom: '20px'
 }
 
-export const headerLargeStyle: React.CSSProperties = {
+export const headerLargeStyle: CSSProperties = {
   marginBottom: '24px'
 }

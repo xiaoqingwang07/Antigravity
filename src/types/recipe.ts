@@ -16,10 +16,15 @@ export interface Nutrition {
   fat?: number       // 脂肪 g
 }
 
+/** 菜谱来源：用于列表角标与用户预期 */
+export type RecipeSource = 'ai' | 'local' | 'cache'
+
 // 菜谱
 export interface Recipe {
   id: string | number
   title: string
+  /** 列表/详情展示：AI 生成、本地库、命中缓存 */
+  source?: RecipeSource
   quote?: string
   rating?: number
   count?: number
@@ -33,13 +38,17 @@ export interface Recipe {
   difficulty?: '简单' | '中等' | '复杂'
   time?: number       // 烹饪时间（分钟）
   tags?: string[]     // 标签：跑者首选、快速补给等
+  /** 收藏入库时间戳（仅本地存储用） */
+  savedAt?: number
 }
 
-// 烹饪步骤（增强版）
+// 烹饪步骤（增强版）— 下图上文，贴近下厨房类 App 的阅读节奏
 export interface Step {
   content: string
   time?: number       // 该步骤耗时（分钟）
   tip?: string        // 小贴士
+  /** 步骤配图 HTTPS URL（须在微信小程序「downloadFile 合法域名」中配置对应主机） */
+  image?: string
 }
 
 // 搜索历史项

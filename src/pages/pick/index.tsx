@@ -4,7 +4,10 @@ import { useState, useMemo } from 'react'
 import { observer } from 'mobx-react-lite'
 import { usePantryStore } from '../../store/context'
 import { addSearchHistory } from '../../store'
-import { getFreshnessStatus, getDaysLeft } from '../../types/pantry'
+import { getDaysLeft } from '../../types/pantry'
+import type { PantryItem } from '../../types/pantry'
+import { getStoredScene } from '../../api/recipe'
+import { D } from '../../theme/designTokens'
 
 const CATEGORIES = [
   {
@@ -29,15 +32,30 @@ const CATEGORIES = [
   }
 ]
 
+function slotHint(p: PantryItem): string {
+  const z = p.side === 'freezer' ? '冻' : '藏'
+  return p.slotIndex < 5 ? `${z}${p.slotIndex + 1}层` : p.slotIndex === 5 ? `${z}上抽` : `${z}下抽`
+}
+
 function Pick() {
   const pantryStore = usePantryStore()
   const [selected, setSelected] = useState<string[]>([])
   const [inputValue, setInputValue] = useState('')
   const [initialized, setInitialized] = useState(false)
+  const [ingredientFilter, setIngredientFilter] = useState('')
 
   const expiringNames = useMemo(() => {
     return pantryStore.expiringItems.map(i => i.name)
   }, [pantryStore.expiringItems])
+
+  const filterHasMatch = useMemo(() => {
+    const raw = ingredientFilter.trim()
+    if (!raw) return true
+    const q = raw.toLowerCase()
+    return CATEGORIES.some((cat) =>
+      cat.items.some((name) => name.toLowerCase().includes(q) || name.includes(raw))
+    )
+  }, [ingredientFilter])
 
   useDidShow(() => {
     if (!initialized && expiringNames.length > 0) {
@@ -67,145 +85,199 @@ function Pick() {
     }
     Taro.setStorageSync('savedIngredients', selected)
     addSearchHistory(selected.join('、'))
+    const scene = getStoredScene()
     Taro.navigateTo({
-      url: `/pages/result/index?from=pantry&ingredients=${encodeURIComponent(selected.join(','))}`
+      url: `/pages/result/index?from=pantry&ingredients=${encodeURIComponent(selected.join(','))}&scene=${scene}`
     })
   }
 
   const handleClear = () => setSelected([])
 
+  const handleImportPantry = () => {
+    const names = pantryStore.items.map((i) => i.name)
+    if (names.length === 0) {
+      Taro.showToast({ title: '冰箱还是空的', icon: 'none' })
+      return
+    }
+    setSelected((prev) => Array.from(new Set([...prev, ...names])))
+    Taro.showToast({ title: `已合并冰箱 ${names.length} 项`, icon: 'success' })
+  }
+
   return (
-    <View style={{ minHeight: '100vh', backgroundColor: '#fafafa', paddingBottom: '120px' }}>
-      {/* Header */}
-      <View style={{ padding: '20px 20px 0', backgroundColor: '#fff' }}>
-        <Text style={{ fontSize: '22px', fontWeight: '700', color: '#1a1a2e', display: 'block', marginBottom: '4px' }}>选菜</Text>
-        <Text style={{ fontSize: '14px', color: '#8e8e93', display: 'block', marginBottom: '16px' }}>选择食材，智能匹配菜谱</Text>
+    <View style={{ minHeight: '100vh', backgroundColor: D.bg, paddingBottom: '120px' }}>
+      <View style={{ padding: '24px 22px 8px' }}>
+        <Text style={{ fontSize: 28, fontWeight: '700', color: D.label, display: 'block', marginBottom: 6, letterSpacing: '-0.03em' }}>选菜</Text>
+        <Text style={{ fontSize: D.footnote, color: D.labelSecondary, lineHeight: 1.45 }}>
+          从列表点选、输入添加或与临期食材一并勾选，再匹配菜谱
+        </Text>
       </View>
 
-      {/* Expiring Highlight */}
-      {expiringNames.length > 0 && (
-        <View style={{ margin: '0 20px 16px', padding: '14px 16px', backgroundColor: '#fff7ed', borderRadius: '14px', border: '1px solid #fed7aa' }}>
-          <View style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-            <Text style={{ fontSize: '14px', fontWeight: '600', color: '#ea580c' }}>⏰ 冰箱里快过期了！优先消耗</Text>
-          </View>
-          <View style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {pantryStore.expiringItems.map(item => {
-              const days = getDaysLeft(item)
-              const isSelected = selected.includes(item.name)
-              return (
-                <View
-                  key={item.id}
-                  style={{
-                    padding: '6px 12px', borderRadius: '8px', fontSize: '13px',
-                    display: 'flex', alignItems: 'center', gap: '4px',
-                    ...(isSelected
-                      ? { backgroundColor: '#f97316', color: '#fff', border: '1px solid #f97316' }
-                      : { backgroundColor: '#fff', color: '#ea580c', border: '1px solid #fed7aa' }
-                    )
-                  }}
-                  onClick={() => toggleSelect(item.name)}
-                >
-                  <Text style={{ color: isSelected ? '#fff' : '#ea580c', fontSize: '13px' }}>
-                    {item.name}
-                  </Text>
-                  <Text style={{ color: isSelected ? 'rgba(255,255,255,0.8)' : '#fb923c', fontSize: '11px' }}>
-                    {days <= 0 ? '今天' : `${days}天`}
-                  </Text>
-                  {isSelected && <Text style={{ color: '#fff', fontSize: '12px' }}> ✓</Text>}
-                </View>
-              )
-            })}
+      {/* 临期 + 手动添加：同一选择面板 */}
+      <View style={{ margin: '12px 22px 16px', padding: '18px 18px', backgroundColor: D.bgElevated, borderRadius: D.radiusM, border: `0.5px solid ${D.separatorLight}`, boxShadow: D.shadowCard }}>
+        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: D.label, letterSpacing: '-0.02em' }}>选择食材</Text>
+          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {selected.length > 0 ? (
+              <Text style={{ fontSize: D.footnote, color: D.red, fontWeight: '500' }} onClick={handleClear}>清空</Text>
+            ) : null}
+            <Text style={{ fontSize: 11, color: D.labelTertiary }} onClick={handleImportPantry}>导入冰箱</Text>
           </View>
         </View>
-      )}
+        <Text style={{ fontSize: D.caption, color: D.labelTertiary, marginBottom: 10 }}>已选 {selected.length} 种</Text>
 
-      {/* Stats + Input */}
-      <View style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px', marginBottom: '12px' }}>
-        <Text style={{ fontSize: '14px', color: '#8e8e93' }}>已选 {selected.length} 种食材</Text>
-        {selected.length > 0 && (
-          <Text style={{ fontSize: '13px', color: '#ef4444' }} onClick={handleClear}>清空</Text>
+        {expiringNames.length > 0 && (
+          <>
+            <Text style={{ fontSize: D.caption, fontWeight: '600', color: D.accentWarm, marginBottom: 8, letterSpacing: '0.06em' }}>临期 · 优先消耗</Text>
+            <View style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: 16 }}>
+              {pantryStore.expiringItems.map(item => {
+                const days = getDaysLeft(item)
+                const isSelected = selected.includes(item.name)
+                return (
+                  <View
+                    key={item.id}
+                    style={{
+                      padding: '6px 12px', borderRadius: D.radiusS, fontSize: '13px',
+                      display: 'flex', alignItems: 'center', gap: '4px',
+                      ...(isSelected
+                        ? { backgroundColor: D.accent, border: `0.5px solid ${D.accent}` }
+                        : { backgroundColor: D.accentWarmMuted, border: `0.5px solid ${D.accentLine}` }
+                      )
+                    }}
+                    onClick={() => toggleSelect(item.name)}
+                  >
+                    <Text style={{ color: isSelected ? '#fff' : D.label, fontSize: '13px' }}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ color: isSelected ? 'rgba(255,255,255,0.85)' : D.accentWarm, fontSize: '11px' }}>
+                      {slotHint(item)} · {days <= 0 ? '今天' : `${days}天`}
+                    </Text>
+                    {isSelected ? <Text style={{ color: '#fff', fontSize: '12px' }}> ✓</Text> : null}
+                  </View>
+                )
+              })}
+            </View>
+            <View style={{ height: 0.5, backgroundColor: D.separator, marginBottom: 16 }} />
+          </>
         )}
-      </View>
 
-      <View style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 20px', marginBottom: '20px' }}>
-        <Input
-          style={{ flex: 1, height: '44px', backgroundColor: '#f3f4f6', borderRadius: '12px', padding: '0 16px', fontSize: '15px' }}
-          placeholder='手动添加食材...'
-          value={inputValue}
-          onInput={(e) => setInputValue(e.detail.value)}
-          onConfirm={handleInputConfirm}
-        />
-        <View
-          style={{ width: '44px', height: '44px', backgroundColor: '#f97316', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={handleInputConfirm}
-        >
-          <Text style={{ color: '#fff', fontSize: '20px' }}>+</Text>
+        <Text style={{ fontSize: D.caption, color: D.labelTertiary, marginBottom: 8 }}>手动输入</Text>
+        <View style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Input
+            style={{ flex: 1, height: '44px', backgroundColor: D.bg, borderRadius: D.radiusS, padding: '0 16px', fontSize: '15px', border: `0.5px solid ${D.separatorLight}` }}
+            placeholder='输入食材名称，回车或点添加'
+            value={inputValue}
+            onInput={(e) => setInputValue(e.detail.value)}
+            onConfirm={handleInputConfirm}
+          />
+          <View
+            style={{ width: '44px', height: '44px', backgroundColor: D.accent, borderRadius: D.radiusS, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={handleInputConfirm}
+          >
+            <Text style={{ color: '#fff', fontSize: '20px', fontWeight: '300' }}>+</Text>
+          </View>
         </View>
       </View>
+
+      <View style={{ padding: '0 22px 8px' }}>
+        <Text style={{ fontSize: D.caption, color: D.labelTertiary, marginBottom: 8 }}>筛选食材（输入即过滤列表）</Text>
+        <Input
+          style={{
+            height: 44,
+            backgroundColor: D.bgElevated,
+            borderRadius: D.radiusS,
+            padding: '0 16px',
+            fontSize: 15,
+            border: `0.5px solid ${D.separatorLight}`,
+          }}
+          placeholder="例如：茄、鸡胸、菇…"
+          value={ingredientFilter}
+          onInput={(e) => setIngredientFilter(e.detail.value)}
+        />
+      </View>
+
+      {!filterHasMatch ? (
+        <View style={{ padding: '12px 22px' }}>
+          <Text style={{ fontSize: 13, color: D.labelTertiary, textAlign: 'center' }}>
+            没有匹配的食材，试试别的关键字或清空筛选
+          </Text>
+        </View>
+      ) : null}
 
       {/* Category Grid */}
-      <ScrollView scrollY style={{ padding: '0 20px' }}>
-        {CATEGORIES.map(cat => (
+      <ScrollView scrollY style={{ padding: '0 22px' }}>
+        {CATEGORIES.map((cat) => {
+          const q = ingredientFilter.trim().toLowerCase()
+          const items = q
+            ? cat.items.filter((name) => name.toLowerCase().includes(q) || name.includes(ingredientFilter.trim()))
+            : cat.items
+          if (items.length === 0) return null
+          return (
           <View key={cat.title}>
             <View style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', marginTop: '16px' }}>
               <Text>{cat.emoji}</Text>
-              <Text style={{ fontSize: '16px', fontWeight: '600', color: '#1f2937' }}>{cat.title}</Text>
+              <Text style={{ fontSize: '16px', fontWeight: '600', color: D.label }}>{cat.title}</Text>
             </View>
             <View style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {cat.items.map(item => {
+              {items.map(item => {
                 const isSelected = selected.includes(item)
                 const isExpiring = expiringNames.includes(item)
+                const pin = pantryStore.items.find((i) => i.name === item)
                 return (
                   <View
                     key={item}
                     style={{
-                      padding: '8px 14px', borderRadius: '10px', fontSize: '14px',
+                      padding: '8px 14px', borderRadius: 12, fontSize: 14,
                       ...(isSelected
-                        ? { backgroundColor: '#f97316', border: '1px solid #f97316', color: '#fff' }
+                        ? { backgroundColor: D.label, border: `0.5px solid ${D.label}`, color: '#fff' }
                         : isExpiring
-                          ? { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', color: '#ea580c' }
-                          : { backgroundColor: '#fff', border: '1px solid #e5e7eb', color: '#4b5563' }
+                          ? { backgroundColor: D.accentWarmMuted, border: `0.5px solid rgba(255,149,0,0.35)`, color: D.label }
+                          : { backgroundColor: D.bgElevated, border: `0.5px solid ${D.separator}`, color: D.label }
                       )
                     }}
                     onClick={() => toggleSelect(item)}
                   >
-                    <Text>{item}</Text>
-                    {isSelected && <Text> ✓</Text>}
+                    <Text style={{ fontSize: 14 }}>{item}</Text>
+                    {pin ? (
+                      <Text style={{ fontSize: 10, color: isSelected ? 'rgba(255,255,255,0.75)' : D.labelTertiary, marginTop: 2 }}>{slotHint(pin)}</Text>
+                    ) : null}
+                    {isSelected ? <Text> ✓</Text> : null}
                   </View>
                 )
               })}
             </View>
           </View>
-        ))}
+          )
+        })}
       </ScrollView>
 
       {/* Bottom Bar */}
       <View style={{
-        position: 'fixed', bottom: 0, left: 0, width: '100%', backgroundColor: '#fff',
+        position: 'fixed', bottom: 0, left: 0, width: '100%', backgroundColor: D.bgElevated,
         padding: '16px 20px', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))',
-        boxShadow: '0 -2px 12px rgba(0,0,0,0.06)', display: 'flex', gap: '12px', boxSizing: 'border-box'
+        boxShadow: '0 -4px 24px rgba(18,17,15,0.06)', display: 'flex', gap: '12px', boxSizing: 'border-box',
+        borderTop: `0.5px solid ${D.separatorLight}`,
       }}>
         {selected.length > 0 && (
           <View style={{
-            display: 'flex', alignItems: 'center', backgroundColor: '#fff7ed',
-            borderRadius: '25px', padding: '0 16px', border: '1px solid #f97316',
-            maxWidth: '50%', overflow: 'hidden'
+            display: 'flex', alignItems: 'center', backgroundColor: D.accentMuted,
+            borderRadius: 999, padding: '0 14px', border: `0.5px solid ${D.accentLine}`,
+            maxWidth: '48%', overflow: 'hidden'
           }}>
-            <Text style={{ fontSize: '14px', color: '#f97316', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Text style={{ fontSize: 13, color: D.accent, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {selected.join('、')}
             </Text>
           </View>
         )}
         <Button
           style={{
-            flex: 1, height: '50px', backgroundColor: selected.length > 0 ? '#f97316' : '#d1d5db',
-            borderRadius: '25px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flex: 1, height: '50px', backgroundColor: selected.length > 0 ? D.accent : 'rgba(18,17,15,0.12)',
+            borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff', fontSize: '16px', fontWeight: '600', border: 'none'
           }}
           onClick={handleMatch}
           disabled={selected.length === 0}
         >
-          {selected.length > 0 ? `智能匹配菜谱 (${selected.length}种)` : '请选择食材'}
+          {selected.length > 0 ? `匹配菜谱 · ${selected.length} 种` : '请选择食材'}
         </Button>
       </View>
     </View>

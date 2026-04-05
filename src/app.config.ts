@@ -10,14 +10,14 @@ export default defineAppConfig({
   ],
   window: {
     backgroundTextStyle: 'light',
-    navigationBarBackgroundColor: '#fff',
+    navigationBarBackgroundColor: '#FFFCF9',
     navigationBarTitleText: '爱心厨房',
     navigationBarTextStyle: 'black'
   },
   tabBar: {
-    color: '#94a3b8',
-    selectedColor: '#ea580c',
-    backgroundColor: '#ffffff',
+    color: 'rgba(18,17,15,0.38)',
+    selectedColor: '#5C4D3F',
+    backgroundColor: '#FFFCF9',
     borderStyle: 'white',
     list: [
       {
@@ -31,6 +31,10 @@ export default defineAppConfig({
       {
         pagePath: 'pages/pantry/index',
         text: '冰箱'
+      },
+      {
+        pagePath: 'pages/favorites/index',
+        text: '收藏'
       },
       {
         pagePath: 'pages/profile/index',

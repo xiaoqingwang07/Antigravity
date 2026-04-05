@@ -3,8 +3,9 @@
  * 覆盖各种场景：早餐、快手、跑后恢复、减脂等
  */
 import type { Recipe } from '../types/recipe'
+import { enrichRecipeMedia } from '../utils/enrichRecipeMedia'
 
-export const DEFAULT_RECIPES: Recipe[] = [
+const RAW_DEFAULT_RECIPES: Recipe[] = [
   {
     id: 1,
     title: '增肌鸡胸肉沙拉',
@@ -365,3 +366,5 @@ export const DEFAULT_RECIPES: Recipe[] = [
     nutritionAnalysis: '酸甜口味开胃，里脊肉蛋白质丰富。'
   }
 ]
+
+export const DEFAULT_RECIPES: Recipe[] = RAW_DEFAULT_RECIPES.map(enrichRecipeMedia)

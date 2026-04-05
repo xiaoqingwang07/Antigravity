@@ -10,11 +10,12 @@ const FAVORITE_DETAILS_KEY = 'favoriteRecipeDetails'
 const SEARCH_HISTORY_KEY = 'searchHistory'
 const COOKED_RECIPES_KEY = 'cookedRecipes'
 
-// ============ 收藏相关 ============
-export const getFavoriteIds = (): number[] => {
+// ============ 收藏相关（ID 统一为字符串，兼容 AI 字符串 id 与历史数字 id） ============
+export const getFavoriteIds = (): string[] => {
   try {
     const fav = Taro.getStorageSync(FAVORITES_KEY)
-    return Array.isArray(fav) ? fav : []
+    if (!Array.isArray(fav)) return []
+    return fav.map((x: unknown) => String(x))
   } catch { return [] }
 }
 
@@ -26,27 +27,26 @@ export const getFavoriteDetails = (): Recipe[] => {
 }
 
 export const isFavorite = (recipeId: number | string): boolean => {
-  return getFavoriteIds().includes(Number(recipeId))
+  return getFavoriteIds().includes(String(recipeId))
 }
 
 export const toggleFavorite = (recipe: Recipe): boolean => {
   const favs = getFavoriteIds()
   let details = getFavoriteDetails()
-  const id = Number(recipe.id)
-  
+  const id = String(recipe.id)
+
   if (favs.includes(id)) {
-    const newFavs = favs.filter(fid => fid !== id)
+    const newFavs = favs.filter((fid) => fid !== id)
     Taro.setStorageSync(FAVORITES_KEY, newFavs)
-    details = details.filter(d => d.id !== id)
+    details = details.filter((d) => String(d.id) !== id)
     Taro.setStorageSync(FAVORITE_DETAILS_KEY, details)
     return false
-  } else {
-    const newFavs = [...favs, id]
-    Taro.setStorageSync(FAVORITES_KEY, newFavs)
-    details = [...details, { ...recipe, savedAt: Date.now() }]
-    Taro.setStorageSync(FAVORITE_DETAILS_KEY, details)
-    return true
   }
+  const newFavs = [...favs, id]
+  Taro.setStorageSync(FAVORITES_KEY, newFavs)
+  details = [...details, { ...recipe, savedAt: Date.now() }]
+  Taro.setStorageSync(FAVORITE_DETAILS_KEY, details)
+  return true
 }
 
 export const getFavoriteCount = (): number => getFavoriteIds().length
@@ -142,6 +142,15 @@ export const setCachedRecipe = (key: string, data: Recipe | Recipe[]): void => {
     cache[key] = { data, timestamp: Date.now() }
     Taro.setStorageSync(RECIPE_CACHE_KEY, cache)
   } catch (e) { console.error('Cache set failed:', e) }
+}
+
+export const removeCachedRecipe = (key: string): void => {
+  try {
+    const cache = (Taro.getStorageSync(RECIPE_CACHE_KEY) as Record<string, CacheItem>) || {}
+    if (!cache[key]) return
+    delete cache[key]
+    Taro.setStorageSync(RECIPE_CACHE_KEY, cache)
+  } catch (e) { console.error('Cache remove failed:', e) }
 }
 
 export const generateCacheKey = (ingredients: string[], scene?: string): string => {

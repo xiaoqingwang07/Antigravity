@@ -7,8 +7,6 @@ import {
   getFavoriteCount,
   getFavoriteDetails,
   getCookedRecipes,
-  getSearchHistory,
-  clearSearchHistory,
   toggleFavorite,
 } from '../../store'
 import { checkApiKey, getLlmApiKey, getStoredScene, setStoredScene, usesLlmProxy } from '../../api/recipe'
@@ -26,8 +24,6 @@ function Profile() {
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
   const [showApiKeyInput, setShowApiKeyInput] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
-  const [showSearchHistory, setShowSearchHistory] = useState(false)
-  const [searchHistoryItems, setSearchHistoryItems] = useState(() => getSearchHistory())
   const [showAbout, setShowAbout] = useState(false)
   const [cookedRecipes, setCookedRecipes] = useState<(Recipe & { cookedAt: number })[]>([])
   const [dinersCount, setDinersCount] = useState(2)
@@ -120,28 +116,6 @@ function Profile() {
     }
   }
 
-  const handleShowHistory = () => {
-    setCookedRecipes(getCookedRecipes())
-    setShowHistory(true)
-  }
-
-  const openSearchHistory = () => {
-    setSearchHistoryItems(getSearchHistory())
-    setShowSearchHistory(true)
-  }
-
-  const handleSearchKeywordTap = (keywords: string) => {
-    Taro.setStorageSync('autoSearchIngredient', keywords)
-    setShowSearchHistory(false)
-    Taro.switchTab({ url: '/pages/index/index' })
-  }
-
-  const handleClearSearchHistory = () => {
-    clearSearchHistory()
-    setSearchHistoryItems([])
-    Taro.showToast({ title: '已清空', icon: 'none' })
-  }
-
   const handleDinersChange = (delta: number) => {
     const next = Math.max(1, Math.min(10, dinersCount + delta))
     setDinersCount(next)
@@ -149,12 +123,27 @@ function Profile() {
   }
 
   const favCount = getFavoriteCount()
+  const cookedLen = getCookedRecipes().length
 
-  const stats = [
-    { label: '冰箱食材', value: pantryStore.totalCount, color: D.accent },
-    { label: '收藏菜谱', value: favCount, color: D.red },
-    { label: '做过的菜', value: getCookedRecipes().length, color: D.green },
+  const stats: { label: string; value: number; action: 'pantry' | 'favorites' | 'cooked' }[] = [
+    { label: '冰箱食材', value: pantryStore.totalCount, action: 'pantry' },
+    { label: '收藏菜谱', value: favCount, action: 'favorites' },
+    { label: '做过的菜', value: cookedLen, action: 'cooked' },
   ]
+
+  const onStatClick = (action: 'pantry' | 'favorites' | 'cooked') => {
+    if (action === 'pantry') {
+      Taro.switchTab({ url: '/pages/pantry/index' })
+      return
+    }
+    if (action === 'favorites') {
+      loadFavoriteItems()
+      setShowFavorites(true)
+      return
+    }
+    setCookedRecipes(getCookedRecipes())
+    setShowHistory(true)
+  }
 
   if (showFavorites) {
     const isEmpty = favoriteItems.length === 0
@@ -254,44 +243,6 @@ function Profile() {
     )
   }
 
-  if (showSearchHistory) {
-    return (
-      <View style={{ minHeight: '100vh', backgroundColor: D.bg }}>
-        <View style={{ padding: '20px', backgroundColor: D.bgElevated, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `0.5px solid ${D.separatorLight}` }}>
-          <View style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Text style={{ fontSize: '16px', color: D.accent }} onClick={() => setShowSearchHistory(false)}>← 返回</Text>
-            <Text style={{ fontSize: '18px', fontWeight: '700', color: D.label }}>搜索历史</Text>
-          </View>
-          {searchHistoryItems.length > 0 && (
-            <Text style={{ fontSize: '14px', color: D.red }} onClick={handleClearSearchHistory}>清空</Text>
-          )}
-        </View>
-        <ScrollView scrollY style={{ padding: '20px' }}>
-          {searchHistoryItems.length === 0 ? (
-            <View style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '80px' }}>
-              <Text style={{ fontSize: '48px', marginBottom: '12px' }}>🔍</Text>
-              <Text style={{ fontSize: '15px', color: D.labelTertiary }}>暂无搜索记录</Text>
-            </View>
-          ) : (
-            searchHistoryItems.map((item, idx) => (
-              <View
-                key={`${item.timestamp}-${idx}`}
-                style={{ backgroundColor: D.bgElevated, borderRadius: D.radiusS, padding: '14px 16px', marginBottom: '10px', border: `0.5px solid ${D.separatorLight}`, boxShadow: D.shadowCard }}
-                onClick={() => handleSearchKeywordTap(item.keywords)}
-              >
-                <Text style={{ fontSize: '16px', fontWeight: '600', color: D.label, display: 'block' }}>{item.keywords}</Text>
-                <Text style={{ fontSize: '12px', color: D.labelTertiary, marginTop: '4px', display: 'block' }}>
-                  {new Date(item.timestamp).toLocaleString('zh-CN')} · 点击回首页搜索
-                </Text>
-              </View>
-            ))
-          )}
-        </ScrollView>
-      </View>
-    )
-  }
-
-  // Main profile view
   if (showHistory) {
     return (
       <View style={{ minHeight: '100vh', backgroundColor: D.bg }}>
@@ -365,12 +316,19 @@ function Profile() {
         <Text style={{ fontSize: D.footnote, color: D.labelSecondary, marginTop: 6 }}>爱心厨房</Text>
         <View style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           {stats.map((s, i) => (
-            <View key={i} style={{ flex: 1, backgroundColor: D.bgElevated, borderRadius: D.radiusM, padding: '14px 10px', textAlign: 'center', border: `0.5px solid ${D.separatorLight}` }}>
+            <View
+              key={i}
+              style={{ flex: 1, backgroundColor: D.bgElevated, borderRadius: D.radiusM, padding: '14px 10px', textAlign: 'center', border: `0.5px solid ${D.separatorLight}` }}
+              onClick={() => onStatClick(s.action)}
+            >
               <Text style={{ fontSize: 22, fontWeight: '700', color: D.label, display: 'block' }}>{s.value}</Text>
               <Text style={{ fontSize: 11, color: D.labelSecondary, marginTop: 4 }}>{s.label}</Text>
             </View>
           ))}
         </View>
+        <Text style={{ fontSize: 11, color: D.labelTertiary, marginTop: 10, textAlign: 'center', lineHeight: 1.4 }}>
+          点击数据：冰箱 · 收藏列表 · 做过的菜
+        </Text>
       </View>
 
       {/* Menu */}
@@ -470,44 +428,6 @@ function Profile() {
               onClick={() => handleDinersChange(1)}
             ><Text style={{ fontSize: '18px', color: '#fff' }}>+</Text></View>
           </View>
-        </View>
-
-        {/* History */}
-        <View
-          style={{ backgroundColor: D.bgElevated, borderRadius: D.radiusS, padding: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '14px', border: `0.5px solid ${D.separatorLight}`, boxShadow: D.shadowCard }}
-          onClick={handleShowHistory}
-        >
-          <Text style={{ fontSize: '24px' }}>📋</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: '16px', fontWeight: '600', color: D.label, display: 'block' }}>烹饪记录</Text>
-            <Text style={{ fontSize: '13px', color: D.labelTertiary }}>做过的菜</Text>
-          </View>
-          <Text style={{ fontSize: '16px', color: D.labelTertiary }}>›</Text>
-        </View>
-
-        <View
-          style={{ backgroundColor: D.bgElevated, borderRadius: D.radiusS, padding: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '14px', border: `0.5px solid ${D.separatorLight}`, boxShadow: D.shadowCard }}
-          onClick={openSearchHistory}
-        >
-          <Text style={{ fontSize: '24px' }}>🔍</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: '16px', fontWeight: '600', color: D.label, display: 'block' }}>搜索历史</Text>
-            <Text style={{ fontSize: '13px', color: D.labelTertiary }}>首页食材搜索关键词</Text>
-          </View>
-          <Text style={{ fontSize: '16px', color: D.labelTertiary }}>›</Text>
-        </View>
-
-        {/* 收藏（已并入本页，不再单独 Tab） */}
-        <View
-          style={{ backgroundColor: D.bgElevated, borderRadius: D.radiusS, padding: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '14px', border: `0.5px solid ${D.separatorLight}`, boxShadow: D.shadowCard }}
-          onClick={() => setShowFavorites(true)}
-        >
-          <Text style={{ fontSize: '24px' }}>❤️</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: '16px', fontWeight: '600', color: D.label, display: 'block' }}>我的收藏</Text>
-            <Text style={{ fontSize: '13px', color: D.labelTertiary }}>{favCount} 道 · 点此查看与管理</Text>
-          </View>
-          <Text style={{ fontSize: '16px', color: D.labelTertiary }}>›</Text>
         </View>
 
         {/* About */}

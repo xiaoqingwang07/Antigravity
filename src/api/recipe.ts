@@ -62,7 +62,9 @@ export interface FetchRecipesOptions extends RequestConfig {
   diners?: number
 }
 
-const DEFAULT_CONFIG: RequestConfig = { retry: 2, timeout: 60000 }
+const DEFAULT_RETRY = 2
+const DEFAULT_TIMEOUT_MS = 60000
+const DEFAULT_CONFIG: RequestConfig = { retry: DEFAULT_RETRY, timeout: DEFAULT_TIMEOUT_MS }
 
 const LLM_STORAGE_KEYS = ['LLM_API_KEY', 'DEEPSEEK_API_KEY'] as const
 
@@ -250,7 +252,7 @@ ${SCENE_USER_TAIL[scene]}
         temperature: 0.75,
         max_tokens: 2800,
       },
-      config?.timeout || DEFAULT_CONFIG.timeout
+      config?.timeout ?? DEFAULT_TIMEOUT_MS
     )
 
     if (statusCode !== 200) {
@@ -297,7 +299,7 @@ ${SCENE_USER_TAIL[scene]}
         steps: r.steps,
       })
     })
-  }, config?.retry ?? DEFAULT_CONFIG.retry!)
+  }, config?.retry ?? DEFAULT_RETRY)
 }
 
 export const checkApiKey = async (): Promise<{ valid: boolean; error?: string }> => {

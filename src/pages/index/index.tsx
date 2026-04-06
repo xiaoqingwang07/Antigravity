@@ -1,9 +1,9 @@
 import { View, Text, Input, ScrollView, Image } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { getSearchHistory, addSearchHistory, clearSearchHistory } from '../../store'
 import { getStoredScene, setStoredScene } from '../../api/recipe'
-import { fetchLiveWeather, getMockWeather } from '../../api/weather'
+import { fetchLiveWeather, getMockWeather, type WeatherData } from '../../api/weather'
 import { getWeatherRecommendationsForWeather } from '../../utils/recommend'
 import { enrichRecipeMedia } from '../../utils/enrichRecipeMedia'
 import type { Recipe, SceneType } from '../../types/recipe'
@@ -24,6 +24,8 @@ export default function Index() {
   const [weatherBase, setWeatherBase] = useState<WeatherData>(() => getMockWeather())
   const [weatherSource, setWeatherSource] = useState<'live' | 'mock'>('mock')
   const [listVariant, setListVariant] = useState(0)
+  /** 避免点「最近搜索」标签时先触发 Input blur 把面板关掉 */
+  const skipSearchBlurRef = useRef(false)
 
   const recommendBundle = useMemo(
     () => getWeatherRecommendationsForWeather(weatherBase, 12, listVariant),
@@ -154,7 +156,16 @@ export default function Index() {
                 value={inputValue}
                 confirmType="search"
                 onInput={(e) => setInputValue(e.detail.value)}
-                onFocus={() => setShowHistory(true)}
+                onFocus={() => {
+                  loadSearchHistory()
+                  setShowHistory(true)
+                }}
+                onBlur={() => {
+                  setTimeout(() => {
+                    if (!skipSearchBlurRef.current) setShowHistory(false)
+                    skipSearchBlurRef.current = false
+                  }, 280)
+                }}
                 onConfirm={handleGenerate}
               />
               <View style={S.searchSubmitStyle} onClick={handleGenerate}>
@@ -175,21 +186,47 @@ export default function Index() {
         </ScrollView>
       </View>
 
-      {showHistory && searchHistory.length > 0 && (
-        <View style={S.historyBoxStyle}>
+      {showHistory && (
+        <View
+          style={S.historyBoxStyle}
+          onTouchStart={() => {
+            skipSearchBlurRef.current = true
+          }}
+        >
           <View style={S.historyHeaderStyle}>
             <Text style={S.historyTitleStyle}>最近搜索</Text>
-            <Text style={S.clearBtnStyle} onClick={handleClearHistory}>
-              清除
+            {searchHistory.length > 0 && (
+              <Text
+                style={S.clearBtnStyle}
+                onClick={() => {
+                  skipSearchBlurRef.current = true
+                  handleClearHistory()
+                }}
+              >
+                清除
+              </Text>
+            )}
+          </View>
+          {searchHistory.length === 0 ? (
+            <Text style={{ fontSize: 13, color: 'rgba(18,17,15,0.45)', paddingLeft: 4, paddingBottom: 4 }}>
+              暂无记录，搜索成功后会出现在这里
             </Text>
-          </View>
-          <View style={S.historyListStyle}>
-            {searchHistory.slice(0, 8).map((keyword, idx) => (
-              <View key={idx} style={S.historyTagStyle} onClick={() => handleHistoryClick(keyword)}>
-                <Text>{keyword}</Text>
-              </View>
-            ))}
-          </View>
+          ) : (
+            <View style={S.historyListStyle}>
+              {searchHistory.slice(0, 8).map((keyword, idx) => (
+                <View
+                  key={idx}
+                  style={S.historyTagStyle}
+                  onTouchStart={() => {
+                    skipSearchBlurRef.current = true
+                  }}
+                  onClick={() => handleHistoryClick(keyword)}
+                >
+                  <Text>{keyword}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       )}
 
@@ -213,66 +250,25 @@ export default function Index() {
           </View>
         </View>
 
-        <View style={S.deckWrapStyle}>
-          {recommendedRecipes.slice(0, 3).map((raw, index) => {
+        <ScrollView scrollX showScrollbar={false} style={S.moreStripScrollStyle}>
+          {recommendedRecipes.map((raw, idx) => {
             const item = enrichRecipeMedia({ ...raw, source: raw.source ?? 'local' })
             return (
-              <View key={String(item.id) + index} style={S.deckCardStyle(index)} onClick={() => handleCardClick(item)}>
-                <View style={S.deckThumbWrapStyle}>
+              <View key={`rec-${String(item.id)}-${idx}`} style={S.moreChipStyle} onClick={() => handleCardClick(item)}>
+                <View style={S.moreChipThumbStyle}>
                   {item.image ? (
-                    <Image
-                      src={item.image}
-                      mode="aspectFill"
-                      style={{ width: '100%', height: '100%', display: 'block' }}
-                      lazyLoad
-                    />
+                    <Image src={item.image} mode="aspectFill" style={{ width: '100%', height: '100%' }} lazyLoad />
                   ) : (
-                    <View
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Text style={{ fontSize: 34 }}>{item.emoji || '🥘'}</Text>
-                    </View>
+                    <Text style={{ fontSize: 22 }}>{item.emoji || '🥘'}</Text>
                   )}
                 </View>
-                <View style={S.deckBodyStyle}>
-                  <Text style={S.deckTitleStyle}>{item.title}</Text>
-                  <Text style={S.deckTagStyle}>{item.time ?? '—'} 分钟 · 本地库</Text>
-                </View>
+                <Text style={S.moreChipTitleStyle} numberOfLines={2}>
+                  {item.title}
+                </Text>
               </View>
             )
           })}
-        </View>
-
-        {recommendedRecipes.length > 3 ? (
-          <>
-            <Text style={S.moreStripTitleStyle}>更多推荐</Text>
-            <ScrollView scrollX showScrollbar={false} style={S.moreStripScrollStyle}>
-              {recommendedRecipes.slice(3).map((raw, idx) => {
-                const item = enrichRecipeMedia({ ...raw, source: raw.source ?? 'local' })
-                return (
-                  <View key={`more-${String(item.id)}-${idx}`} style={S.moreChipStyle} onClick={() => handleCardClick(item)}>
-                    <View style={S.moreChipThumbStyle}>
-                      {item.image ? (
-                        <Image src={item.image} mode="aspectFill" style={{ width: '100%', height: '100%' }} lazyLoad />
-                      ) : (
-                        <Text style={{ fontSize: 22 }}>{item.emoji || '🥘'}</Text>
-                      )}
-                    </View>
-                    <Text style={S.moreChipTitleStyle} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                  </View>
-                )
-              })}
-            </ScrollView>
-          </>
-        ) : null}
+        </ScrollView>
       </View>
     </View>
   )
